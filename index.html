@@ -3613,11 +3613,13 @@ function doLogout(){
 /* =====================================================================
    PWA — cài SMART QC lên điện thoại/máy tính, không thay đổi giao diện chính
    ===================================================================== */
+let pwaInstallReady=false;
+let pwaInstallChecked=false;
 window.addEventListener('beforeinstallprompt',e=>{
-  e.preventDefault(); deferredInstallPrompt=e;
+  e.preventDefault(); deferredInstallPrompt=e; pwaInstallReady=true; pwaInstallChecked=true;
   const btn=document.getElementById('installAppBtn'); if(btn) btn.style.display='inline-flex';
 });
-window.addEventListener('appinstalled',()=>{ deferredInstallPrompt=null; const btn=document.getElementById('installAppBtn'); if(btn) btn.style.display='none'; toast('pass','Đã cài SMART QC','Biểu tượng ứng dụng đã được thêm vào thiết bị.'); });
+window.addEventListener('appinstalled',()=>{ deferredInstallPrompt=null; pwaInstallReady=false; const btn=document.getElementById('installAppBtn'); if(btn) btn.style.display='none'; toast('pass','Đã cài SMART QC','Biểu tượng ứng dụng đã được thêm vào thiết bị.'); });
 async function installPWA(){
   if(deferredInstallPrompt){
     try{
@@ -3630,16 +3632,26 @@ async function installPWA(){
   const isiOS=/iphone|ipad|ipod/i.test(navigator.userAgent);
   const isLocal=location.protocol==='file:';
   const isSecure=window.isSecureContext || location.protocol==='https:' || location.hostname==='localhost' || location.hostname==='127.0.0.1';
-  if(isiOS){
+  const isStandalone=window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone===true;
+  if(isStandalone){
+    toast('pass','SMART QC đã được cài','Ứng dụng đang chạy ở chế độ ứng dụng.');
+  }else if(isiOS){
     toast('warning','Cài ứng dụng','Trên iPhone/iPad: mở bằng Safari → Chia sẻ → Thêm vào Màn hình chính.');
   }else if(isLocal || !isSecure){
     toast('warning','Cài ứng dụng','Hãy mở SMART QC từ địa chỉ HTTPS (ví dụ Vercel), không mở trực tiếp file HTML trên máy tính.');
   }else{
-    toast('warning','Cài ứng dụng','SMART QC đang kiểm tra điều kiện cài đặt. Nếu trình duyệt chưa hiện nút Cài đặt, hãy tải lại trang một lần để nhận cấu hình PWA mới.');
+    toast('warning','Cài ứng dụng','Trình duyệt chưa cung cấp cửa sổ cài đặt. Hãy tải lại trang sau khi triển khai SMART QC bằng HTTPS để trình duyệt nhận Manifest và Service Worker mới.');
   }
 }
 if('serviceWorker' in navigator){
-  window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js',{scope:'./'}).then(()=>navigator.serviceWorker.ready).catch(e=>console.warn('SW register failed',e)));
+  window.addEventListener('load',async()=>{
+    try{
+      const reg=await navigator.serviceWorker.register('./sw.js',{scope:'./'});
+      await navigator.serviceWorker.ready;
+      pwaInstallChecked=true;
+      console.info('[SMART QC PWA] Service Worker ready:',reg.scope);
+    }catch(e){ console.warn('[SMART QC PWA] Service Worker register failed',e); }
+  });
 }
 
 /* =====================================================================
