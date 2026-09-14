@@ -3619,11 +3619,28 @@ window.addEventListener('beforeinstallprompt',e=>{
 });
 window.addEventListener('appinstalled',()=>{ deferredInstallPrompt=null; const btn=document.getElementById('installAppBtn'); if(btn) btn.style.display='none'; toast('pass','Đã cài SMART QC','Biểu tượng ứng dụng đã được thêm vào thiết bị.'); });
 async function installPWA(){
-  if(deferredInstallPrompt){ deferredInstallPrompt.prompt(); const {outcome}=await deferredInstallPrompt.userChoice; if(outcome==='accepted') deferredInstallPrompt=null; return; }
+  if(deferredInstallPrompt){
+    try{
+      deferredInstallPrompt.prompt();
+      const {outcome}=await deferredInstallPrompt.userChoice;
+      if(outcome==='accepted') deferredInstallPrompt=null;
+      return;
+    }catch(e){ console.warn('PWA install prompt failed',e); }
+  }
   const isiOS=/iphone|ipad|ipod/i.test(navigator.userAgent);
-  toast('warning','Cài ứng dụng',isiOS?'Trên iPhone/iPad: mở bằng Safari → Chia sẻ → Thêm vào Màn hình chính.':'Trình duyệt sẽ hiển thị nút Cài đặt khi ứng dụng đáp ứng điều kiện PWA trên HTTPS.');
+  const isLocal=location.protocol==='file:';
+  const isSecure=window.isSecureContext || location.protocol==='https:' || location.hostname==='localhost' || location.hostname==='127.0.0.1';
+  if(isiOS){
+    toast('warning','Cài ứng dụng','Trên iPhone/iPad: mở bằng Safari → Chia sẻ → Thêm vào Màn hình chính.');
+  }else if(isLocal || !isSecure){
+    toast('warning','Cài ứng dụng','Hãy mở SMART QC từ địa chỉ HTTPS (ví dụ Vercel), không mở trực tiếp file HTML trên máy tính.');
+  }else{
+    toast('warning','Cài ứng dụng','SMART QC đang kiểm tra điều kiện cài đặt. Nếu trình duyệt chưa hiện nút Cài đặt, hãy tải lại trang một lần để nhận cấu hình PWA mới.');
+  }
 }
-if('serviceWorker' in navigator){ window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(e=>console.warn('SW register failed',e))); }
+if('serviceWorker' in navigator){
+  window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js',{scope:'./'}).then(()=>navigator.serviceWorker.ready).catch(e=>console.warn('SW register failed',e)));
+}
 
 /* =====================================================================
    BOOT
