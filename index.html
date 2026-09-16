@@ -6427,12 +6427,16 @@ function renderChemicalAllergen(){
       h2{text-align:center;font-size:13pt;margin:2mm 0 3mm}
       h3{font-size:11pt;margin:3mm 0 1.5mm;page-break-after:avoid;break-after:avoid}
       p{margin:2mm 0}
-      table{width:100%;border-collapse:collapse;table-layout:fixed;margin:2.5mm 0 4mm;page-break-inside:auto;break-inside:auto}
+      table{width:100%;max-width:100%;border-collapse:separate;border-spacing:0 2px;table-layout:fixed;margin:2.5mm 0 4mm;page-break-inside:auto;break-inside:auto}
       thead{display:table-header-group}
       tfoot{display:table-footer-group}
       tr{page-break-inside:avoid;break-inside:avoid}
-      th,td{border:1px solid #555;padding:3px 4px;vertical-align:middle;overflow-wrap:anywhere;word-break:break-word;line-height:1.15}
+      th,td{border:1px solid #555;padding:4px 5px;vertical-align:middle;text-align:center;overflow-wrap:anywhere;word-break:break-word;white-space:normal;line-height:1.15;min-width:0}
       th{background:#EAF3FB;font-weight:700;text-align:center}
+      td.pdf-empty-cell{background:#fafafa!important;border-radius:6px!important;color:#777!important}
+      td.pdf-empty-cell::after{content:'';display:block;min-height:14px}
+      table tr td:first-child,table tr th:first-child{border-top-left-radius:6px;border-bottom-left-radius:6px}
+      table tr td:last-child,table tr th:last-child{border-top-right-radius:6px;border-bottom-right-radius:6px}
       .meta{display:grid;grid-template-columns:1fr 1fr;gap:2mm 7mm;margin:2mm 0 3mm}
       .meta>div{padding:1.5mm 1mm;border-bottom:1px solid #bbb;overflow-wrap:anywhere;break-inside:avoid}
       .raw-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.5mm 7mm;margin:2mm 0 3mm}
@@ -6750,11 +6754,12 @@ body.printing-virology-annual-td #view-virology-reports-td .vr-chart-card{break-
 @media print{
   html,body{height:auto!important;min-height:0!important;overflow:visible!important;}
   *,*::before,*::after{box-sizing:border-box;}
-  table{width:100%!important;max-width:100%!important;border-collapse:collapse!important;}
+  table{width:100%!important;max-width:100%!important;border-collapse:separate!important;border-spacing:0 2px!important;table-layout:fixed!important;}
   thead{display:table-header-group!important;}
   tfoot{display:table-footer-group!important;}
   tr{break-inside:avoid!important;page-break-inside:avoid!important;}
-  td,th{overflow-wrap:anywhere!important;word-break:break-word!important;white-space:normal!important;}
+  td,th{overflow-wrap:anywhere!important;word-break:break-word!important;white-space:normal!important;text-align:center!important;vertical-align:middle!important;min-width:0!important;}
+  td:empty{background:#fafafa!important;border-radius:6px!important;}
   .table-wrap,.vr-table-wrap{overflow:visible!important;height:auto!important;max-height:none!important;}
   .vr-chart-box{height:auto!important;max-height:none!important;overflow:visible!important;white-space:normal!important;}
   .vr-chart-box img{max-width:100%!important;width:100%!important;height:auto!important;max-height:260px!important;object-fit:contain!important;}
@@ -6785,6 +6790,14 @@ body.printing-virology-annual-td #view-virology-reports-td .vr-chart-card{break-
     if(!w){if(typeof toast==='function')toast('warning','Trình duyệt chặn cửa sổ in','Hãy cho phép cửa sổ bật lên rồi thử lại.');return;}
     const clone=source.cloneNode(true);
     clone.querySelectorAll('.vr-controls,.vr-no-print,.no-print,.btn-row').forEach(x=>x.remove());
+    clone.querySelectorAll('table').forEach(table=>{
+      table.style.width='100%';table.style.maxWidth='100%';table.style.tableLayout='fixed';table.style.borderCollapse='separate';table.style.borderSpacing='0 2px';
+      table.querySelectorAll('tr').forEach(tr=>tr.querySelectorAll('th,td').forEach(cell=>{
+        const txt=(cell.textContent||'').replace(/\u00a0/g,' ').trim();
+        if(!txt || txt==='—' || txt==='-') cell.classList.add('pdf-empty-cell');
+        cell.style.boxSizing='border-box';cell.style.textAlign='center';cell.style.verticalAlign='middle';cell.style.whiteSpace='normal';cell.style.overflowWrap='anywhere';cell.style.wordBreak='break-word';
+      }));
+    });
     clone.style.display='block';clone.style.width='100%';clone.style.height='auto';clone.style.maxHeight='none';clone.style.overflow='visible';
     const base=`
       *{box-sizing:border-box}
@@ -6800,11 +6813,15 @@ body.printing-virology-annual-td #view-virology-reports-td .vr-chart-card{break-
       .vr-table th,.vr-table td{padding:3px 4px!important;height:auto!important;min-height:0!important;line-height:1.15!important;vertical-align:middle!important;overflow-wrap:anywhere!important;word-break:break-word!important;white-space:normal!important}
       .vr-table thead{display:table-header-group!important}
       .vr-table tr{break-inside:avoid!important;page-break-inside:avoid!important}
-      table{width:100%!important;max-width:100%!important;border-collapse:collapse!important;table-layout:fixed!important}
+      table{width:100%!important;max-width:100%!important;border-collapse:separate!important;border-spacing:0 2px!important;table-layout:fixed!important}
       thead{display:table-header-group!important}
       tfoot{display:table-footer-group!important}
       tr{break-inside:avoid!important;page-break-inside:avoid!important}
-      td,th{overflow-wrap:anywhere!important;word-break:break-word!important;white-space:normal!important}
+      td,th{overflow-wrap:anywhere!important;word-break:break-word!important;white-space:normal!important;text-align:center!important;vertical-align:middle!important;min-width:0!important}
+      td.pdf-empty-cell{background:#fafafa!important;border-radius:6px!important;color:#777!important}
+      td.pdf-empty-cell::after{content:'';display:block;min-height:14px}
+      table tr td:first-child,table tr th:first-child{border-top-left-radius:6px!important;border-bottom-left-radius:6px!important}
+      table tr td:last-child,table tr th:last-child{border-top-right-radius:6px!important;border-bottom-right-radius:6px!important}
       h1,h2,h3{break-after:avoid!important;page-break-after:avoid!important}
       @page{size:A4 ${orientation};margin:6mm}
       ${extraCss||''}`;
