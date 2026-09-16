@@ -5767,6 +5767,13 @@ bootApp=function(){virologyEnsureState();_oldBootApp();};
   }
   window.generateVirologyAnnualReport=updateReport;
   window.toggleVirologyReportYears=selectAllYears;
+  /* Expose report data helpers so the final PDF printer can use the same
+     data/filter logic. These were previously scoped only inside this IIFE,
+     causing PDF to incorrectly report 'Không có dữ liệu' even when the
+     report table already contained data. */
+  window.__smartAnnualEntriesTC=annualEntries;
+  window.__smartSelectedYearsTC=selectedYears;
+  window.__smartUpdateReportTC=updateReport;
 
   window.exportVirologyAnnualExcel=async function(){
     updateReport();
@@ -6800,9 +6807,13 @@ body.printing-virology-annual-td #view-virology-reports-td .vr-chart-card{break-
     waitForImages(w.document,()=>{try{w.focus();w.print();}catch(e){console.error(e);}});
   }
   window.printVirologyAnnualPDF=function(){
-    if(typeof updateReport==='function')updateReport();
+    if(typeof window.__smartUpdateReportTC==='function')window.__smartUpdateReportTC();
     const source=document.getElementById('view-virology-reports-tc');
-    const filtered=(typeof annualEntries==='function'?annualEntries():[]).filter(x=>(!document.getElementById('vr_strain')?.value||x.strain===document.getElementById('vr_strain').value)&&(!document.getElementById('vr_abx')?.value||x.antibiotic===document.getElementById('vr_abx').value)&&((typeof selectedYears==='function'?selectedYears():[]).includes(x.year)));
+    const entries=typeof window.__smartAnnualEntriesTC==='function'?window.__smartAnnualEntriesTC():[];
+    const years=typeof window.__smartSelectedYearsTC==='function'?window.__smartSelectedYearsTC():Array.from(document.querySelectorAll('#vr_years input[type=checkbox]:checked')).map(x=>x.value);
+    const strain=document.getElementById('vr_strain')?.value||'';
+    const abx=document.getElementById('vr_abx')?.value||'';
+    const filtered=entries.filter(x=>(!strain||x.strain===strain)&&(!abx||x.antibiotic===abx)&&years.includes(x.year));
     if(!filtered.length){if(typeof toast==='function')toast('warning','Không có dữ liệu','Không có số liệu QC Vi sinh (TC) phù hợp để in.');return;}
     if(!source){if(typeof toast==='function')toast('danger','Không thể in báo cáo','Không tìm thấy vùng báo cáo QC Vi sinh (TC).');return;}
     printClone(source,'Báo cáo QC Vi sinh (TC)','landscape',`
@@ -6820,7 +6831,11 @@ body.printing-virology-annual-td #view-virology-reports-td .vr-chart-card{break-
   window.printVirologyTDAnnualPDF=function(){
     if(typeof updateVirologyTDReport==='function')updateVirologyTDReport();
     const source=document.getElementById('view-virology-reports-td');
-    const filtered=(typeof annualEntriesTD==='function'?annualEntriesTD():[]).filter(x=>(!document.getElementById('vtd_strain')?.value||x.strain===document.getElementById('vtd_strain').value)&&(!document.getElementById('vtd_abx')?.value||x.antibiotic===document.getElementById('vtd_abx').value)&&(Array.from(document.querySelectorAll('#vtd_years input[type=checkbox]:checked')).map(x=>x.value).includes(x.year)));
+    const entries=typeof window.__smartAnnualEntriesTD==='function'?window.__smartAnnualEntriesTD():[];
+    const years=typeof window.__smartSelectedYearsTD==='function'?window.__smartSelectedYearsTD():Array.from(document.querySelectorAll('#vtd_years input[type=checkbox]:checked')).map(x=>x.value);
+    const strain=document.getElementById('vtd_strain')?.value||'';
+    const abx=document.getElementById('vtd_abx')?.value||'';
+    const filtered=entries.filter(x=>(!strain||x.strain===strain)&&(!abx||x.antibiotic===abx)&&years.includes(x.year));
     if(!filtered.length){if(typeof toast==='function')toast('warning','Không có dữ liệu','Không có số liệu QC Vi sinh (TĐ) phù hợp để in.');return;}
     if(!source){if(typeof toast==='function')toast('danger','Không thể in báo cáo','Không tìm thấy vùng báo cáo QC Vi sinh (TĐ).');return;}
     printClone(source,'Báo cáo QC Vi sinh (TĐ)','landscape',`
