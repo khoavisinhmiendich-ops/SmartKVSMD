@@ -6730,3 +6730,110 @@ body.printing-virology-annual-td #view-virology-reports-td .vr-chart-card{break-
 #view-virology-reports-tc #vr_detail_table th,#view-virology-reports-tc #vr_detail_table td,#view-virology-reports-td #vtd_detail_table th,#view-virology-reports-td #vtd_detail_table td{height:auto!important;min-height:0!important;padding:6px 8px!important;line-height:1.2!important;vertical-align:middle!important;}
 #view-virology-reports-tc #vr_detail_table tbody tr,#view-virology-reports-td #vtd_detail_table tbody tr{height:auto!important;min-height:0!important;}
 </style>
+
+<!-- SMART QC FINAL PDF NO-CUT / COMPLETE-DATA PATCH -->
+<style id="smart-final-pdf-no-cut-all">
+@media print{
+  html,body{height:auto!important;min-height:0!important;overflow:visible!important;}
+  *,*::before,*::after{box-sizing:border-box;}
+  table{width:100%!important;max-width:100%!important;border-collapse:collapse!important;}
+  thead{display:table-header-group!important;}
+  tfoot{display:table-footer-group!important;}
+  tr{break-inside:avoid!important;page-break-inside:avoid!important;}
+  td,th{overflow-wrap:anywhere!important;word-break:break-word!important;white-space:normal!important;}
+  .table-wrap,.vr-table-wrap{overflow:visible!important;height:auto!important;max-height:none!important;}
+  .vr-chart-box{height:auto!important;max-height:none!important;overflow:visible!important;white-space:normal!important;}
+  .vr-chart-box img{max-width:100%!important;width:100%!important;height:auto!important;max-height:260px!important;object-fit:contain!important;}
+  .report-print-area,.rapid-water-print-sheet,.card{height:auto!important;max-height:none!important;overflow:visible!important;}
+  .report-print-area table,.rapid-water-print-sheet table{page-break-inside:auto!important;break-inside:auto!important;}
+  .report-print-area .report-chart-block,.vr-chart-card{break-inside:auto!important;page-break-inside:auto!important;}
+  .report-print-area .report-chart-block{height:auto!important;overflow:visible!important;}
+  .report-print-area .qc-svg-host{height:auto!important;max-height:260px!important;overflow:visible!important;}
+}
+</style>
+<script id="smart-final-pdf-no-cut-all-script">
+(function(){
+  'use strict';
+  function waitForImages(doc,done){
+    const imgs=[...doc.images||[]];
+    if(!imgs.length){setTimeout(done,250);return;}
+    let left=imgs.length,finished=false;
+    const finish=()=>{if(finished)return;finished=true;setTimeout(done,180);};
+    imgs.forEach(img=>{
+      const one=()=>{left--;if(left<=0)finish();};
+      if(img.complete)one();else{img.addEventListener('load',one,{once:true});img.addEventListener('error',one,{once:true});}
+    });
+    setTimeout(finish,2500);
+  }
+  function printClone(source,title,orientation,extraCss){
+    if(!source)return;
+    const w=window.open('','_blank','width=1280,height=950');
+    if(!w){if(typeof toast==='function')toast('warning','Trình duyệt chặn cửa sổ in','Hãy cho phép cửa sổ bật lên rồi thử lại.');return;}
+    const clone=source.cloneNode(true);
+    clone.querySelectorAll('.vr-controls,.vr-no-print,.no-print,.btn-row').forEach(x=>x.remove());
+    clone.style.display='block';clone.style.width='100%';clone.style.height='auto';clone.style.maxHeight='none';clone.style.overflow='visible';
+    const base=`
+      *{box-sizing:border-box}
+      html,body{margin:0!important;padding:0!important;background:#fff!important;color:#111!important;font-family:'Times New Roman',Times,serif!important;width:100%!important;height:auto!important;min-height:0!important;overflow:visible!important}
+      body{padding:6mm!important;font-size:9pt!important;line-height:1.22!important}
+      .view{display:block!important;width:100%!important;height:auto!important;max-height:none!important;overflow:visible!important}
+      .card{width:100%!important;height:auto!important;max-height:none!important;overflow:visible!important;box-shadow:none!important;border:1px solid #555!important;margin:0 0 5mm!important;break-inside:auto!important;page-break-inside:auto!important}
+      .card-head{break-after:avoid!important;page-break-after:avoid!important}
+      .vr-chart-box{height:auto!important;max-height:none!important;overflow:visible!important;white-space:normal!important;padding:5px!important}
+      .vr-chart-box img{display:block!important;width:100%!important;max-width:100%!important;height:auto!important;max-height:250px!important;object-fit:contain!important;margin:0 auto!important}
+      .vr-table-wrap,.table-wrap{overflow:visible!important;height:auto!important;max-height:none!important;width:100%!important}
+      .vr-table{width:100%!important;min-width:0!important;max-width:100%!important;table-layout:fixed!important;font-size:8pt!important}
+      .vr-table th,.vr-table td{padding:3px 4px!important;height:auto!important;min-height:0!important;line-height:1.15!important;vertical-align:middle!important;overflow-wrap:anywhere!important;word-break:break-word!important;white-space:normal!important}
+      .vr-table thead{display:table-header-group!important}
+      .vr-table tr{break-inside:avoid!important;page-break-inside:avoid!important}
+      table{width:100%!important;max-width:100%!important;border-collapse:collapse!important;table-layout:fixed!important}
+      thead{display:table-header-group!important}
+      tfoot{display:table-footer-group!important}
+      tr{break-inside:avoid!important;page-break-inside:avoid!important}
+      td,th{overflow-wrap:anywhere!important;word-break:break-word!important;white-space:normal!important}
+      h1,h2,h3{break-after:avoid!important;page-break-after:avoid!important}
+      @page{size:A4 ${orientation};margin:6mm}
+      ${extraCss||''}`;
+    w.document.open();
+    w.document.write(`<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>${String(title||'SMART QC').replace(/[&<>]/g,'')}</title><style>${base}</style></head><body>${clone.outerHTML}</body></html>`);
+    w.document.close();
+    waitForImages(w.document,()=>{try{w.focus();w.print();}catch(e){console.error(e);}});
+  }
+  window.printVirologyAnnualPDF=function(){
+    if(typeof updateReport==='function')updateReport();
+    const source=document.getElementById('view-virology-reports-tc');
+    const filtered=(typeof annualEntries==='function'?annualEntries():[]).filter(x=>(!document.getElementById('vr_strain')?.value||x.strain===document.getElementById('vr_strain').value)&&(!document.getElementById('vr_abx')?.value||x.antibiotic===document.getElementById('vr_abx').value)&&((typeof selectedYears==='function'?selectedYears():[]).includes(x.year)));
+    if(!filtered.length){if(typeof toast==='function')toast('warning','Không có dữ liệu','Không có số liệu QC Vi sinh (TC) phù hợp để in.');return;}
+    if(!source){if(typeof toast==='function')toast('danger','Không thể in báo cáo','Không tìm thấy vùng báo cáo QC Vi sinh (TC).');return;}
+    printClone(source,'Báo cáo QC Vi sinh (TC)','landscape',`
+      #vr_detail_table th:nth-child(1),#vr_detail_table td:nth-child(1){width:7%!important}
+      #vr_detail_table th:nth-child(2),#vr_detail_table td:nth-child(2){width:10%!important}
+      #vr_detail_table th:nth-child(3),#vr_detail_table td:nth-child(3){width:14%!important}
+      #vr_detail_table th:nth-child(4),#vr_detail_table td:nth-child(4){width:14%!important}
+      #vr_detail_table th:nth-child(5),#vr_detail_table td:nth-child(5){width:10%!important}
+      #vr_detail_table th:nth-child(6),#vr_detail_table td:nth-child(6){width:10%!important}
+      #vr_detail_table th:nth-child(7),#vr_detail_table td:nth-child(7){width:10%!important}
+      #vr_detail_table th:nth-child(8),#vr_detail_table td:nth-child(8){width:7%!important}
+      #vr_detail_table th:nth-child(9),#vr_detail_table td:nth-child(9){width:18%!important}
+    `);
+  };
+  window.printVirologyTDAnnualPDF=function(){
+    if(typeof updateVirologyTDReport==='function')updateVirologyTDReport();
+    const source=document.getElementById('view-virology-reports-td');
+    const filtered=(typeof annualEntriesTD==='function'?annualEntriesTD():[]).filter(x=>(!document.getElementById('vtd_strain')?.value||x.strain===document.getElementById('vtd_strain').value)&&(!document.getElementById('vtd_abx')?.value||x.antibiotic===document.getElementById('vtd_abx').value)&&(Array.from(document.querySelectorAll('#vtd_years input[type=checkbox]:checked')).map(x=>x.value).includes(x.year)));
+    if(!filtered.length){if(typeof toast==='function')toast('warning','Không có dữ liệu','Không có số liệu QC Vi sinh (TĐ) phù hợp để in.');return;}
+    if(!source){if(typeof toast==='function')toast('danger','Không thể in báo cáo','Không tìm thấy vùng báo cáo QC Vi sinh (TĐ).');return;}
+    printClone(source,'Báo cáo QC Vi sinh (TĐ)','landscape',`
+      #vtd_detail_table th:nth-child(1),#vtd_detail_table td:nth-child(1){width:7%!important}
+      #vtd_detail_table th:nth-child(2),#vtd_detail_table td:nth-child(2){width:10%!important}
+      #vtd_detail_table th:nth-child(3),#vtd_detail_table td:nth-child(3){width:14%!important}
+      #vtd_detail_table th:nth-child(4),#vtd_detail_table td:nth-child(4){width:17%!important}
+      #vtd_detail_table th:nth-child(5),#vtd_detail_table td:nth-child(5){width:10%!important}
+      #vtd_detail_table th:nth-child(6),#vtd_detail_table td:nth-child(6){width:9%!important}
+      #vtd_detail_table th:nth-child(7),#vtd_detail_table td:nth-child(7){width:10%!important}
+      #vtd_detail_table th:nth-child(8),#vtd_detail_table td:nth-child(8){width:7%!important}
+      #vtd_detail_table th:nth-child(9),#vtd_detail_table td:nth-child(9){width:16%!important}
+    `);
+  };
+})();
+</script>
