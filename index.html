@@ -5927,6 +5927,13 @@ bootApp=function(){virologyEnsureState();_oldBootApp();};
     makeChart(entries,years,strain,abx,'virology-reports-td','vtd_annual_chart');
     const detail=document.getElementById('vtd_detail_body');if(detail)detail.innerHTML=filtered.slice().sort((a,b)=>(a.year+a.date).localeCompare(b.year+b.date)).map(x=>`<tr><td>${escapeHtml(x.year)}</td><td>${escapeHtml(virologyFmtDate(x.date))}</td><td>${escapeHtml(x.strain)}</td><td>${escapeHtml(x.antibiotic)}</td><td>${escapeHtml(x.concentration)}</td><td>${escapeHtml(x.lot||'—')}</td><td>${fmtNum(x.value)}</td><td>Lần ${x.run}</td><td>${escapeHtml(x.staff||'—')}</td></tr>`).join('')||`<tr><td colspan="9" class="tbl-empty">Chưa có dữ liệu phù hợp.</td></tr>`;
   }
+  /* Expose the exact TĐ report data/filter functions so the final PDF printer
+     uses the same dataset that is already rendered on screen. Previously these
+     functions remained inside this IIFE, so the PDF printer saw an empty array
+     and incorrectly reported 'Không có dữ liệu'. */
+  window.__smartAnnualEntriesTD=annualEntriesTD;
+  window.__smartTDReportFiltered=tdReportFiltered;
+  window.__smartUpdateReportTD=updateVirologyTDReport;
   window.generateVirologyTDAnnualReport=updateVirologyTDReport;
   window.toggleVirologyTDReportYears=function(on){document.querySelectorAll('#vtd_years input[type=checkbox]').forEach(x=>x.checked=on);updateVirologyTDReport();};
   window.exportVirologyTDAnnualExcel=async function(){
@@ -6829,13 +6836,21 @@ body.printing-virology-annual-td #view-virology-reports-td .vr-chart-card{break-
     `);
   };
   window.printVirologyTDAnnualPDF=function(){
-    if(typeof updateVirologyTDReport==='function')updateVirologyTDReport();
+    if(typeof window.__smartUpdateReportTD==='function')window.__smartUpdateReportTD();
     const source=document.getElementById('view-virology-reports-td');
-    const entries=typeof window.__smartAnnualEntriesTD==='function'?window.__smartAnnualEntriesTD():[];
-    const years=typeof window.__smartSelectedYearsTD==='function'?window.__smartSelectedYearsTD():Array.from(document.querySelectorAll('#vtd_years input[type=checkbox]:checked')).map(x=>x.value);
-    const strain=document.getElementById('vtd_strain')?.value||'';
-    const abx=document.getElementById('vtd_abx')?.value||'';
-    const filtered=entries.filter(x=>(!strain||x.strain===strain)&&(!abx||x.antibiotic===abx)&&years.includes(x.year));
+    let entries=[],years=[],strain=document.getElementById('vtd_strain')?.value||'',abx=document.getElementById('vtd_abx')?.value||'',filtered=[];
+    if(typeof window.__smartTDReportFiltered==='function'){
+      const r=window.__smartTDReportFiltered()||{};
+      entries=Array.isArray(r.entries)?r.entries:[];
+      years=Array.isArray(r.years)?r.years:[];
+      strain=r.strain??strain;
+      abx=r.abx??abx;
+      filtered=Array.isArray(r.filtered)?r.filtered:[];
+    }else{
+      entries=typeof window.__smartAnnualEntriesTD==='function'?window.__smartAnnualEntriesTD():[];
+      years=typeof window.__smartSelectedYearsTD==='function'?window.__smartSelectedYearsTD():Array.from(document.querySelectorAll('#vtd_years input[type=checkbox]:checked')).map(x=>x.value);
+      filtered=entries.filter(x=>(!strain||x.strain===strain)&&(!abx||x.antibiotic===abx)&&years.includes(x.year));
+    }
     if(!filtered.length){if(typeof toast==='function')toast('warning','Không có dữ liệu','Không có số liệu QC Vi sinh (TĐ) phù hợp để in.');return;}
     if(!source){if(typeof toast==='function')toast('danger','Không thể in báo cáo','Không tìm thấy vùng báo cáo QC Vi sinh (TĐ).');return;}
     printClone(source,'Báo cáo QC Vi sinh (TĐ)','landscape',`
