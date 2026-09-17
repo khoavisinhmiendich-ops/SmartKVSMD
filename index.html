@@ -1601,9 +1601,9 @@ const VIEW_META={
   tests:['Xét nghiệm','Danh mục xét nghiệm và thiết lập Mean/SD'],
   machines:['Máy xét nghiệm','Danh mục thiết bị'],
   'chemical-md':['Quản lý Hóa chất MD','Quản lý hóa chất theo từng máy — iFlash 9000, 108 dị nguyên và DxI 800'],
-  'chemical-iflash':['Quản lý Hóa chất MD — iFlash 9000','Theo dõi Kho, Nhận, Trên máy, Thực hiện, Cảnh báo, LOT và DATE theo ngày'],
+  'chemical-iflash':['Quản lý Hóa chất MD — iFlash 9000','Theo dõi Kho, Nhận, Đầu ngày, Cuối ngày, Cảnh báo, LOT và DATE theo ngày'],
   'chemical-allergen':['Quản lý Hóa chất MD — 108 dị nguyên','Theo dõi Kho, Nhận, Thực hiện, Cảnh báo, Anti CCD và Ghi chú theo ngày'],
-  'chemical-dxi':['Quản lý Hóa chất MD — DxI 800','Theo dõi Kho, Nhận, Trên máy, Thực hiện, Cảnh báo, LOT và DATE theo ngày'],
+  'chemical-dxi':['Quản lý Hóa chất MD — DxI 800','Theo dõi Kho, Nhận, Đầu ngày, Cuối ngày, Cảnh báo, LOT và DATE theo ngày'],
   lots:['Lot QC Máy miễn dịch tự động','Quản lý lô QC - theo Level 1 & Level 2'],
   'rapidwater-lots':['Lot QC Test nhanh & Test nước','Quản lý Lot - theo chứng Âm và chứng Dương'],
   reports:['Báo cáo XN MDTĐ','Xuất báo cáo QC'],
@@ -6076,12 +6076,17 @@ function chemicalWarning(v,limitDanger,limitLow){
   if(n<=limitLow)return {label:'Sắp hết',cls:'warning'};
   return {label:'OK',cls:'pass'};
 }
+/* FIX: Không render lại toàn bộ module khi đang nhập số liệu.
+ * Render lại toàn bộ DOM sau mỗi onchange làm mất focus và có thể đưa màn hình về đầu trang.
+ * Dữ liệu vẫn được lưu ngay; phần tính toán được cập nhật riêng mà không thay thế DOM của ô nhập.
+ */
 function chemicalInput(machine,testId,date,key,value,type='text',extra=''){
   const shown=type==='number'?chemicalInputValue(value):String(value??'');
   const empty=type==='number'&&!chemicalHasValue(value);
-  return `<input class="chem-input${type==='number'?' chem-zero-input':''}" type="${type}" value="${escapeHtml(shown)}" ${extra} ${empty?'data-empty="1"':''} ${empty&&type==='number'?`onfocus="if(this.dataset.empty==='1'){this.value='';this.dataset.empty='0';}"`:''} onchange="chemicalSet('${machine}','${testId}','${date}','${key}',this.value)">`;
+  const chemId=escapeHtml(`${machine}__${testId}__${date}__${key}`);
+  return `<input class="chem-input${type==='number'?' chem-zero-input':''}" data-chem-id="${chemId}" type="${type}" value="${escapeHtml(shown)}" ${extra} ${empty?'data-empty="1"':''} ${empty&&type==='number'?`onfocus="if(this.dataset.empty==='1'){this.value='';this.dataset.empty='0';}"`:''} onchange="chemicalSet('${machine}','${testId}','${date}','${key}',this.value,this)">`;
 }
-function chemicalSet(machine,testId,date,key,value){
+function chemicalSet(machine,testId,date,key,value,sourceEl){
   const r=chemicalGet(machine,testId,date,true);r[key]=value;
   if((machine==='allergen'||machine==='allergen_shared')&&key==='execute'){
     r.antiCcd=chemicalNum(value)>0?'Có Anti CCD':'';
@@ -6089,11 +6094,53 @@ function chemicalSet(machine,testId,date,key,value){
     if(chemicalNum(value)<=0)r.note='';
   }
   queueSave();
-  if(machine==='allergen'||machine==='allergen_shared')renderChemicalAllergen();
-  else if(machine!=='iflash_aux')renderChemicalMachine(machine);
+  /* Không gọi renderChemicalMachine/renderChemicalAllergen ở đây.
+     Giữ nguyên DOM để ô đang nhập không mất focus, không mất giá trị đang gõ,
+     không nhảy scroll và không quay về trang đầu. */
+  refreshChemicalCalculatedUI(machine==='allergen_shared'?'allergen':machine,testId,date);
+}
+function refreshChemicalCalculatedUI(kind,testId,date){
+  try{
+    if(kind==='allergen'){
+      const ym=chemicalYM('allergen');
+      for(let d=1;d<=chemicalDaysInMonth(ym.year,ym.month);d++){
+        const dt=chemicalDate(ym.year,ym.month,d),r=chemicalGet('allergen_shared','shared',dt,false)||{};
+        const stock=chemicalAllergenStock(d,ym.year,ym.month);
+        const warn=chemicalWarning(stock,10,20);
+        const row=document.querySelector(`[data-chem-allergen-date="${dt}"]`);
+        if(!row)continue;
+        const stockEl=row.querySelector('[data-chem-calc="stock"]');
+        if(stockEl)stockEl.textContent=String(stock);
+        const warnEl=row.querySelector('[data-chem-calc="warning"]');
+        const active=chemicalHasValue(r.receive)||chemicalHasValue(r.execute);
+        if(warnEl){warnEl.className=`chem-warning ${active?warn.cls:'zero'}`;warnEl.textContent=active?warn.label:'0';}
+        const anti=row.querySelector('[data-chem-calc="anti-ccd"]');
+        if(anti)anti.textContent=chemicalNum(r.execute)>0?'Có Anti CCD':'0';
+      }
+      return;
+    }
+    if(kind==='iflash'||kind==='dxi'){
+      const ym=chemicalYM(kind),days=chemicalDaysInMonth(ym.year,ym.month);
+      for(let d=1;d<=days;d++){
+        const dt=chemicalDate(ym.year,ym.month,d);
+        document.querySelectorAll(`[data-chem-machine-date="${dt}"][data-chem-machine="${kind}"]`).forEach(row=>{
+          const tid=row.getAttribute('data-chem-test')||'';
+          const stock=chemicalStock(kind,tid,d,ym.year,ym.month);
+          const on=chemicalMachineOn(kind,tid,d,ym.year,ym.month);
+          const warn=chemicalWarning(stock,20,50);
+          const r=chemicalGet(kind,tid,dt,false)||{};
+          const active=chemicalHasValue(r.receive)||chemicalHasValue(r.machineTransfer)||chemicalHasValue(r.execute);
+          const stockEl=row.querySelector('[data-chem-calc="stock"]'); if(stockEl)stockEl.textContent=String(stock);
+          const onEl=row.querySelector('[data-chem-calc="on-machine"]'); if(onEl)onEl.textContent=String(on);
+          const warnEl=row.querySelector('[data-chem-calc="warning"]');
+          if(warnEl){warnEl.className=`chem-warning ${active?warn.cls:'zero'}`;warnEl.textContent=active?warn.label:'0';}
+        });
+      }
+    }
+  }catch(e){ console.warn('chemical calculated UI refresh:',e); }
 }
 function chemicalSetMonthlyMeta(machine,year,month,key,value){
-  const r=chemicalMonthlyMeta(machine,year,month,true);r[key]=value;queueSave();renderChemicalMachine(machine);
+  const r=chemicalMonthlyMeta(machine,year,month,true);r[key]=value;queueSave();
 }
 function chemicalAddMonthlyLot(machine,year,month){
   const r=chemicalMonthlyMeta(machine,year,month,true);r.lotHistory=r.lotHistory||[];
@@ -6169,13 +6216,13 @@ function renderChemicalMachine(machine){
       const active=chemicalHasValue(r.receive)||chemicalHasValue(r.machineTransfer)||chemicalHasValue(r.execute);
       const initialOn=d===1?chemicalInput(machine,t.name,date,'onMachineInput',r.onMachineInput,'number','step="any" min="0" placeholder="0"'):`<span class="chem-horizontal-auto chem-highlight">${on}</span>`;
       const transfer=chemicalInput(machine,t.name,date,'machineTransfer',r.machineTransfer,'number','step="any" min="0" placeholder="0"');
-      rows+=`<td class="chem-test-horizontal-cell">
+      rows+=`<td class="chem-test-horizontal-cell" data-chem-machine="${machine}" data-chem-test="${escapeHtml(t.name)}" data-chem-machine-date="${date}">
         <div class="chem-horizontal-grid chem-value-focus">
-          <div class="chem-horizontal-item"><span>Kho</span><b class="chem-horizontal-value chem-highlight">${stock}</b><small>Cấp máy</small>${transfer}</div>
+          <div class="chem-horizontal-item"><span>Kho</span><b class="chem-horizontal-value chem-highlight" data-chem-calc="stock">${stock}</b><small>Cấp máy</small>${transfer}</div>
           <div class="chem-horizontal-item"><span>Nhận</span>${chemicalInput(machine,t.name,date,'receive',r.receive,'number','step="any" min="0" placeholder="0"')}</div>
-          <div class="chem-horizontal-item"><span>Trên máy</span>${initialOn}</div>
+          <div class="chem-horizontal-item"><span>Trên máy</span>${d===1?initialOn:`<span class="chem-horizontal-auto chem-highlight" data-chem-calc="on-machine">${on}</span>`}</div>
           <div class="chem-horizontal-item"><span>Thực hiện</span>${chemicalInput(machine,t.name,date,'execute',r.execute,'number','step="any" min="0" placeholder="0"')}</div>
-          <div class="chem-horizontal-item"><span>Cảnh báo</span><em class="chem-warning ${active?warn.cls:'zero'}">${active?warn.label:'0'}</em></div>
+          <div class="chem-horizontal-item"><span>Cảnh báo</span><em class="chem-warning ${active?warn.cls:'zero'}" data-chem-calc="warning">${active?warn.label:'0'}</em></div>
         </div>
       </td>`;
     });
@@ -6193,17 +6240,34 @@ function renderChemicalMachine(machine){
   el.innerHTML=`<div class="card"><div class="card-head"><div><h3>${machineName}</h3><span class="hint">Chọn tháng và năm độc lập; ngày tự động theo tháng đã chọn.</span></div><span class="tag">${tests.length} xét nghiệm</span></div><div class="card-body">${chemicalYearMonthControls(kind)}<div class="chem-legend"><span class="pill pass"><span class="dot"></span> OK</span><span class="pill warning"><span class="dot"></span> Sắp hết</span><span class="pill danger"><span class="dot"></span> Nguy hiểm</span></div></div></div><div class="card chem-table-card"><div class="card-head"><div><h3>Sổ theo dõi hóa chất — ${machineName}</h3><span class="hint">Tất cả xét nghiệm hiển thị HÀNG NGANG trong MỘT bảng. Mỗi hàng là một ngày. Kho chỉ cộng khi có Nhận; Cấp máy sẽ trừ Kho ở ngày kế tiếp; Trên máy = tồn ngày trước + Cấp máy − Thực hiện.</span></div></div><div class="chem-table-wrap chem-horizontal-wrap"><table class="chem-table chem-machine-horizontal-table"><thead><tr><th class="chem-day-head">Ngày</th>${testHeaders}</tr></thead><tbody>${rows}</tbody></table></div></div>${monthlyMeta}${aux}`;
 }
 
+/* 108 DỊ NGUYÊN — CÔNG THỨC KHO THEO YÊU CẦU MỚI
+ * Kho ngày D = Kho ngày D-1 + Nhận ngày D - Thực hiện ngày D.
+ * Ngày 1 bắt đầu từ 0. Giá trị Kho được cập nhật ngay trên chính ngày nhập liệu
+ * và tự động cộng/trừ, sau đó được mang sang tất cả các ngày tiếp theo trong tháng.
+ * Chỉ áp dụng cho 108 dị nguyên; KHÔNG thay đổi công thức iFlash 9000 / DxI 800.
+ */
+function chemicalAllergenStock(day,year,month){
+  let stock=0;
+  for(let d=1;d<=day;d++){
+    const r=chemicalGet('allergen_shared','shared',chemicalDate(year,month,d),false)||{};
+    const receive=chemicalHasValue(r.receive)?chemicalNum(r.receive):0;
+    const execute=chemicalHasValue(r.execute)?chemicalNum(r.execute):0;
+    stock=Math.max(0,stock+receive-execute);
+  }
+  return stock;
+}
+
 function renderChemicalAllergen(){
   const el=document.getElementById('view-chemical-allergen');if(!el)return;chemicalEnsureState();
   const ym=chemicalYM('allergen'),days=chemicalDaysInMonth(ym.year,ym.month);let rows='';
   for(let d=1;d<=days;d++){
     const date=chemicalDate(ym.year,ym.month,d),r=chemicalGet('allergen_shared','shared',date,false)||{};
-    const stock=chemicalStock('allergen_shared','shared',d,ym.year,ym.month),warn=chemicalWarning(stock,10,20);
+    const stock=chemicalAllergenStock(d,ym.year,ym.month),warn=chemicalWarning(stock,10,20);
     const active=chemicalHasValue(r.receive)||chemicalHasValue(r.execute),execute=chemicalNum(r.execute);
     const noteVal=execute>0?(r.note==='2'?'2':'1'):'';
-    rows+=`<tr><td class="chem-date">${d}/${pad(ym.month)}/${ym.year}</td><td><span class="chem-auto-value">${stock}</span></td><td>${chemicalInput('allergen_shared','shared',date,'receive',r.receive,'number','step="any" min="0" placeholder="0"')}</td><td>${chemicalInput('allergen_shared','shared',date,'execute',r.execute,'number','step="any" min="0" placeholder="0"')}</td><td><span class="chem-warning ${active?warn.cls:'zero'}">${active?warn.label:'0'}</span></td><td><span class="chem-auto-text">${execute>0?'Có Anti CCD':'0'}</span></td><td class="chem-lot-cell"><input class="chem-input" value="${escapeHtml(r.lot||'')}" placeholder="Thêm LOT" onchange="chemicalSet('allergen_shared','shared','${date}','lot',this.value)"><button class="chem-mini-btn" type="button" onclick="chemicalAddLotAllergen('${date}')">+ Thêm LOT mới</button>${chemicalLotHistoryText(r)}</td><td class="chem-lot-cell"><input class="chem-input" type="date" value="${escapeHtml(r.lotDate||'')}" onchange="chemicalSet('allergen_shared','shared','${date}','lotDate',this.value)"><button class="chem-mini-btn" type="button" onclick="chemicalAddDateAllergen('${date}')">+ Thêm DATE mới</button></td><td><select class="chem-input" onchange="chemicalSet('allergen_shared','shared','${date}','note',this.value)"><option value="">—</option><option value="1" ${noteVal==='1'?'selected':''}>1. Hoạt động bình thường</option><option value="2" ${noteVal==='2'?'selected':''}>2. Lỗi</option></select></td></tr>`;
+    rows+=`<tr data-chem-allergen-date="${date}"><td class="chem-date">${d}/${pad(ym.month)}/${ym.year}</td><td><span class="chem-auto-value" data-chem-calc="stock">${stock}</span></td><td>${chemicalInput('allergen_shared','shared',date,'receive',r.receive,'number','step="any" min="0" placeholder="0"')}</td><td>${chemicalInput('allergen_shared','shared',date,'execute',r.execute,'number','step="any" min="0" placeholder="0"')}</td><td><span class="chem-warning ${active?warn.cls:'zero'}" data-chem-calc="warning">${active?warn.label:'0'}</span></td><td><span class="chem-auto-text" data-chem-calc="anti-ccd">${execute>0?'Có Anti CCD':'0'}</span></td><td class="chem-lot-cell"><input class="chem-input" value="${escapeHtml(r.lot||'')}" placeholder="Thêm LOT" onchange="chemicalSet('allergen_shared','shared','${date}','lot',this.value)"><button class="chem-mini-btn" type="button" onclick="chemicalAddLotAllergen('${date}')">+ Thêm LOT mới</button>${chemicalLotHistoryText(r)}</td><td class="chem-lot-cell"><input class="chem-input" type="date" value="${escapeHtml(r.lotDate||'')}" onchange="chemicalSet('allergen_shared','shared','${date}','lotDate',this.value)"><button class="chem-mini-btn" type="button" onclick="chemicalAddDateAllergen('${date}')">+ Thêm DATE mới</button></td><td><select class="chem-input" onchange="chemicalSet('allergen_shared','shared','${date}','note',this.value)"><option value="">—</option><option value="1" ${noteVal==='1'?'selected':''}>1. Hoạt động bình thường</option><option value="2" ${noteVal==='2'?'selected':''}>2. Lỗi</option></select></td></tr>`;
   }
-  el.innerHTML=`<div class="card"><div class="card-head"><div><h3>108 dị nguyên</h3><span class="hint">Hóa chất dùng chung cho toàn bộ 108 dị nguyên; chỉ 1 sổ theo dõi theo ngày.</span></div><span class="tag">Hóa chất dùng chung</span></div><div class="card-body">${chemicalYearMonthControls('allergen')}<div class="chem-legend"><span class="pill pass"><span class="dot"></span> OK</span><span class="pill warning"><span class="dot"></span> Sắp hết</span><span class="pill danger"><span class="dot"></span> Nguy hiểm</span></div></div></div><div class="card chem-table-card"><div class="card-head"><div><h3>Sổ theo dõi hóa chất dùng chung — 108 dị nguyên</h3><span class="hint">Kho ngày D là tồn đầu ngày. Nhận/Thực hiện ngày D được chốt và tự động chuyển sang Kho ngày D+1. Khi chưa nhập Nhận, ô Nhận hiển thị 0.</span></div></div><div class="chem-table-wrap"><table class="chem-table chem-allergen-shared-table"><thead><tr><th>Ngày</th><th>Kho</th><th>Nhận</th><th>Thực hiện</th><th>Cảnh báo</th><th>Anti CCD</th><th>LOT</th><th>DATE</th><th>Ghi chú</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+  el.innerHTML=`<div class="card"><div class="card-head"><div><h3>108 dị nguyên</h3><span class="hint">Hóa chất dùng chung cho toàn bộ 108 dị nguyên; chỉ 1 sổ theo dõi theo ngày.</span></div><span class="tag">Hóa chất dùng chung</span></div><div class="card-body">${chemicalYearMonthControls('allergen')}<div class="chem-legend"><span class="pill pass"><span class="dot"></span> OK</span><span class="pill warning"><span class="dot"></span> Sắp hết</span><span class="pill danger"><span class="dot"></span> Nguy hiểm</span></div></div></div><div class="card chem-table-card"><div class="card-head"><div><h3>Sổ theo dõi hóa chất dùng chung — 108 dị nguyên</h3><span class="hint">Kho ngày D = Kho ngày D-1 + Nhận ngày D − Thực hiện ngày D. Khi nhập Nhận hoặc Thực hiện, Kho của ngày đó và các ngày tiếp theo trong tháng tự động cập nhật.</span></div></div><div class="chem-table-wrap"><table class="chem-table chem-allergen-shared-table"><thead><tr><th>Ngày</th><th>Kho</th><th>Nhận</th><th>Thực hiện</th><th>Cảnh báo</th><th>Anti CCD</th><th>LOT</th><th>DATE</th><th>Ghi chú</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
 }
 </script>
 <style id="smart-chemical-md-style">
@@ -7061,5 +7125,204 @@ body.printing-virology-annual-td #view-virology-reports-td .vr-chart-card{break-
     const active=document.querySelector('.view.active[id^="view-chemical-"]');
     if(active){const id=active.id.replace('view-chemical-','');if(id==='iflash'||id==='dxi')window.renderChemicalMachine(id);}
   }catch(e){console.error(e);}
+})();
+</script>
+
+<style id="smart-chemical-input-lock-final">
+/* Chỉ cố định vùng nhập số liệu của Quản lý Hóa chất MD; không thay đổi giao diện chung. */
+#view-chemical-iflash .chem-input,
+#view-chemical-dxi .chem-input,
+#view-chemical-allergen .chem-input{position:relative;z-index:8;}
+#view-chemical-iflash .chem-input:focus,
+#view-chemical-dxi .chem-input:focus,
+#view-chemical-allergen .chem-input:focus{position:relative;z-index:20;}
+.chem-editing-lock{outline:2px solid rgba(22,119,179,.16)!important;}
+</style>
+<script id="smart-chemical-input-lock-final">
+(function(){
+  /*
+   * FIX: Khi đang nhập dữ liệu trong Quản lý Hóa chất MD,
+   * không re-render toàn bộ module sau mỗi lần nhập.
+   * Vì vậy ô đang nhập không bị mất focus/đổi về trang đầu.
+   * Áp dụng cho iFlash 9000, DxI 800 và 108 dị nguyên.
+   * Không thay đổi công thức hay giao diện của các module khác.
+   */
+  const chemicalViewIds=['view-chemical-iflash','view-chemical-dxi','view-chemical-allergen'];
+  const isChemicalInput=el=>!!(el&&el.classList&&el.classList.contains('chem-input')&&el.closest('#view-chemical-iflash,#view-chemical-dxi,#view-chemical-allergen'));
+  const isChemicalView=()=>chemicalViewIds.some(id=>{const el=document.getElementById(id);return el&&el.classList.contains('active');});
+
+  window.__smartChemicalEditing=false;
+  window.__smartChemicalEditingInput=null;
+
+  document.addEventListener('focusin',function(e){
+    if(!isChemicalInput(e.target))return;
+    window.__smartChemicalEditing=true;
+    window.__smartChemicalEditingInput=e.target;
+    e.target.classList.add('chem-editing-lock');
+  },true);
+
+  document.addEventListener('focusout',function(e){
+    if(!isChemicalInput(e.target))return;
+    e.target.classList.remove('chem-editing-lock');
+    /* Không render lại tại đây. DOM hiện tại được giữ nguyên để người dùng
+       chuyển sang ô kế tiếp mà không bị mất vị trí nhập. */
+    if(window.__smartChemicalEditingInput===e.target){
+      window.__smartChemicalEditingInput=null;
+      window.__smartChemicalEditing=false;
+    }
+  },true);
+
+  document.addEventListener('keydown',function(e){
+    if(!isChemicalInput(e.target))return;
+    if(e.key==='Enter'){
+      e.preventDefault();
+      /* Enter chỉ xác nhận giá trị, tuyệt đối không điều hướng về Dashboard. */
+      if(typeof e.target.onchange==='function'){
+        try{e.target.onchange();}catch(err){console.error(err);}
+      }
+      e.target.blur();
+    }
+  },true);
+
+  /* Lưu ngay khi người dùng đang gõ/chỉnh số nhưng không re-render. */
+  function refreshChemicalVisibleValues(){
+    try{
+      const ids=[['view-chemical-iflash','iflash'],['view-chemical-dxi','dxi']];
+      ids.forEach(pair=>{
+        const view=document.getElementById(pair[0]);
+        if(!view||!view.classList.contains('active'))return;
+        const machine=pair[1], ym=chemicalYM(machine);
+        const heads=Array.from(view.querySelectorAll('.chem-test-horizontal-head .chem-test-horizontal-title b')).map(x=>x.textContent.trim());
+        view.querySelectorAll('.chem-machine-horizontal-table tbody tr').forEach(tr=>{
+          const first=tr.querySelector('.chem-day-horizontal');
+          const day=Number(first?.querySelector('b')?.textContent||0);
+          if(!day)return;
+          const cells=tr.querySelectorAll('.chem-test-horizontal-cell');
+          cells.forEach((td,i)=>{
+            const testId=heads[i];
+            if(!testId)return;
+            const stock=chemicalStock(machine,testId,day,ym.year,ym.month);
+            const value=td.querySelector('.chem-horizontal-value.chem-highlight');
+            if(value)value.textContent=String(stock);
+            const warn=td.querySelector('.chem-horizontal-wide .chem-warning');
+            if(warn){
+              const r=chemicalGet(machine,testId,chemicalDate(ym.year,ym.month,day),false)||{};
+              const active=has(r.receive)||has(r.execute)||has(r.onMachineInput);
+              const w=chemicalWarning(stock,20,50);
+              warn.className='chem-warning '+(active?w.cls:'zero');
+              warn.textContent=active?w.label:'0';
+            }
+          });
+        });
+      });
+      const av=document.getElementById('view-chemical-allergen');
+      if(av&&av.classList.contains('active')){
+        const ym=chemicalYM('allergen');
+        av.querySelectorAll('.chem-allergen-shared-table tbody tr').forEach(tr=>{
+          const day=Number(tr.querySelector('.chem-date')?.textContent?.trim().split('/')[0]||0);
+          if(!day)return;
+          const stock=typeof chemicalAllergenStock==='function'?chemicalAllergenStock(day,ym.year,ym.month):0;
+          const value=tr.querySelector('.chem-auto-value');
+          if(value)value.textContent=String(stock);
+          const receive=tr.querySelectorAll('.chem-input')[0];
+          const execute=tr.querySelectorAll('.chem-input')[1];
+          const warn=tr.querySelector('.chem-warning');
+          if(warn){
+            const active=has(receive?.value)||has(execute?.value);
+            const w=chemicalWarning(stock,10,20);
+            warn.className='chem-warning '+(active?w.cls:'zero');
+            warn.textContent=active?w.label:'0';
+          }
+          const anti=tr.querySelector('.chem-auto-text');
+          if(anti)anti.textContent=(num(execute?.value)>0?'Có Anti CCD':'0');
+        });
+      }
+    }catch(err){console.error(err);}
+  }
+  window.__smartRefreshChemicalVisibleValues=refreshChemicalVisibleValues;
+
+  document.addEventListener('input',function(e){
+    if(!isChemicalInput(e.target))return;
+    if(typeof e.target.onchange==='function'){
+      try{e.target.onchange();}catch(err){console.error(err);}
+    }
+    /* Cập nhật KHO/Cảnh báo ngay trên màn hình nhưng không dựng lại DOM,
+       nên ô đang nhập vẫn cố định và không mất con trỏ. */
+    refreshChemicalVisibleValues();
+  },true);
+
+  /* Giữ module hiện tại khi đang có ô nhập được focus. Chỉ chặn việc
+     chuyển nhầm về Dashboard; các điều hướng khác vẫn giữ nguyên. */
+  const oldGo=window.go;
+  if(typeof oldGo==='function'){
+    window.go=function(view){
+      if(view==='dashboard' && window.__smartChemicalEditing && isChemicalView()){
+        const active=window.__smartChemicalEditingInput;
+        if(active && document.activeElement===active){
+          if(typeof toast==='function')toast('warning','Đang nhập dữ liệu','Vui lòng hoàn tất ô đang nhập trước khi trở về trang đầu.');
+          return;
+        }
+      }
+      return oldGo(view);
+    };
+  }
+
+  /* Ghi nhớ module hóa chất đang mở; nếu có thao tác lưu dữ liệu,
+     không cho phép logic phụ tự đưa currentView về Dashboard. */
+  const keepChemicalView=function(){
+    if(!isChemicalView())return;
+    const activeId=chemicalViewIds.find(id=>{const el=document.getElementById(id);return el&&el.classList.contains('active');});
+    if(activeId){
+      const id=activeId.replace('view-chemical-','');
+      if(window.currentView && window.currentView!=='dashboard') return;
+      try{window.currentView=id==='iflash'?'chemical-iflash':id==='dxi'?'chemical-dxi':'chemical-allergen';}catch(e){}
+    }
+  };
+  window.__smartKeepChemicalModule=keepChemicalView;
+
+  /* Không thay đổi cách tính/lưu dữ liệu. Chỉ thay đổi việc render sau khi
+     onchange xảy ra trong lúc ô đó vẫn đang được focus. */
+  const originalChemicalSet=window.chemicalSet;
+  if(typeof originalChemicalSet==='function'){
+    window.chemicalSet=function(machine,testId,date,key,value){
+      const active=document.activeElement;
+      const editing=isChemicalInput(active);
+      const result=originalChemicalSet;
+      if(editing){
+        const r=chemicalGet(machine,testId,date,true);
+        r[key]=value;
+        if((machine==='allergen'||machine==='allergen_shared')&&key==='execute'){
+          const n=typeof chemicalNum==='function'?chemicalNum(value):Number(value)||0;
+          r.antiCcd=n>0?'Có Anti CCD':'';
+          if(n>0&&!r.note)r.note='1';
+          if(n<=0)r.note='';
+        }
+        queueSave();
+        /* Không gọi renderChemical... ở đây. */
+        return;
+      }
+      return result(machine,testId,date,key,value);
+    };
+  }
+
+  /* Metadata/LOT/DATE cũng không được làm mất ô đang nhập. */
+  const originalMonthly=window.chemicalSetMonthlyMetaForTest;
+  if(typeof originalMonthly==='function'){
+    window.chemicalSetMonthlyMetaForTest=function(machine,testId,year,month,key,value){
+      const active=document.activeElement;
+      if(isChemicalInput(active)){
+        const r=chemicalMonthlyMeta(machine,year,month,true);
+        r.byTest=r.byTest||{};
+        r.byTest[testId]=r.byTest[testId]||{lot:'',lotDate:'',manufacturer:'YHLO',reportBy:'',lotHistory:[]};
+        r.byTest[testId][key]=value;
+        queueSave();
+        return;
+      }
+      return originalMonthly(machine,testId,year,month,key,value);
+    };
+  }
+
+  /* Các thao tác đổi tháng/năm hoặc mở module vẫn render bình thường. */
+  try{keepChemicalView();}catch(e){}
 })();
 </script>
