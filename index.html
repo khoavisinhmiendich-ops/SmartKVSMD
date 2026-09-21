@@ -7012,6 +7012,150 @@ body.printing-virology-annual-td #view-virology-reports-td .vr-chart-card{break-
   };
 })();
 </script>
+<style id="smart-chemical-md-replenishment-fix">
+/* Chỉ sửa logic iFlash 9000 / DxI 800 theo yêu cầu mới; không đổi giao diện. */
+</style>
+<script id="smart-chemical-md-replenishment-fix">
+(function(){
+  if(typeof chemicalEnsureState!=='function'||typeof chemicalGet!=='function')return;
+  const num=v=>typeof chemicalNum==='function'?chemicalNum(v):(Number.isFinite(Number(v))?Math.max(0,Number(v)):0);
+  const has=v=>typeof chemicalHasValue==='function'?chemicalHasValue(v):(v!==''&&v!==null&&v!==undefined&&String(v).trim()!=='');
+  const dayDate=(y,m,d)=>chemicalDate(y,m,d);
+  const isMachine=m=>m==='iflash'||m==='dxi';
+
+  function prevDateRef(year,month,day){
+    if(day>1)return {year:Number(year),month:Number(month),day:day-1};
+    if(Number(month)===1)return {year:Number(year)-1,month:12,day:31};
+    return {year:Number(year),month:Number(month)-1,day:new Date(Number(year),Number(month)-1,0).getDate()};
+  }
+  function nextDateRef(year,month,day){
+    const days=chemicalDaysInMonth(year,month);
+    if(day<days)return {year:Number(year),month:Number(month),day:day+1};
+    if(Number(month)===12)return {year:Number(year)+1,month:1,day:1};
+    return {year:Number(year),month:Number(month)+1,day:1};
+  }
+
+  /*
+   * Khi Đầu ngày tăng so với Đầu ngày hôm trước, TOÀN BỘ phần tăng là test bổ sung
+   * lấy từ KHO. Số lượng bổ sung KHÔNG cố định: có thể là 100, 200, 300 hoặc
+   * bất kỳ số lượng nào theo thực tế người dùng nhập.
+   */
+  window.chemicalOpeningReplenishment=function(machine,testId,day,year,month){
+    if(!isMachine(machine)||day<=1)return 0;
+    const cur=chemicalGet(machine,testId,dayDate(year,month,day),false)||{};
+    const prevRef=prevDateRef(year,month,day);
+    const prev=chemicalGet(machine,testId,dayDate(prevRef.year,prevRef.month,prevRef.day),false)||{};
+    if(!has(cur.openingStock)||!has(prev.openingStock))return 0;
+    const currentOpening=num(cur.openingStock);
+    const previousOpening=num(prev.openingStock);
+    return currentOpening>previousOpening ? currentOpening-previousOpening : 0;
+  };
+
+  /* KHO giữ cách cộng Nhận hiện tại, đồng thời trừ phần bổ sung phát sinh từ Đầu ngày. */
+  window.chemicalStock=function(machine,testId,day,year,month){
+    let stock=0,touched=false;
+    for(let d=1;d<=day;d++){
+      const r=chemicalGet(machine,testId,dayDate(year,month,d),false); if(!r)continue;
+      const receive=has(r.receive)?num(r.receive):0;
+      const replenishment=isMachine(machine)?window.chemicalOpeningReplenishment(machine,testId,d,year,month):0;
+      if(has(r.receive)||replenishment>0)touched=true;
+      stock=Math.max(0,stock+receive-replenishment);
+    }
+    return touched?stock:0;
+  };
+
+  /* Nếu ngày D+1 tăng Đầu ngày so với D thì D+1 là ngày bổ sung từ KHO. */
+  window.chemicalIsReplenishmentDay=function(machine,testId,day,year,month){
+    return isMachine(machine)&&window.chemicalOpeningReplenishment(machine,testId,day,year,month)>0;
+  };
+
+  /* Cuối ngày: bình thường lấy Đầu ngày hôm sau. Nếu Đầu ngày hôm sau tăng,
+     phần tăng là bổ sung từ KHO nên ngày trước không phát sinh tiêu thụ âm. */
+  function baseClosingStock(machine,testId,day,year,month){
+    const next=nextDateRef(year,month,day);
+    const cur=chemicalGet(machine,testId,dayDate(year,month,day),false)||{};
+    const nextRow=chemicalGet(machine,testId,dayDate(next.year,next.month,next.day),false)||{};
+    if(!has(nextRow.openingStock))return null;
+    /* Nếu ngày kế tiếp được bổ sung từ KHO, ngày hiện tại giữ tồn đầu ngày làm Cuối ngày. */
+    if(has(cur.openingStock)&&num(nextRow.openingStock)>num(cur.openingStock))return num(cur.openingStock);
+    return num(nextRow.openingStock);
+  }
+
+  window.chemicalAutoClosingStock=function(machine,testId,day,year,month){
+    if(!isMachine(machine))return null;
+    /* Ngày đang nhập bổ sung: Cuối ngày giữ nguyên như ngày trước. */
+    if(window.chemicalIsReplenishmentDay(machine,testId,day,year,month)&&day>1){
+      const prev=prevDateRef(year,month,day);
+      return baseClosingStock(machine,testId,prev.day,prev.year,prev.month);
+    }
+    return baseClosingStock(machine,testId,day,year,month);
+  };
+
+  /* Sử dụng = Đầu ngày - Cuối ngày; ngày bổ sung giữ nguyên như ngày trước. */
+  window.chemicalDailyUsage=function(machine,testId,day,year,month){
+    if(!isMachine(machine))return null;
+    if(window.chemicalIsReplenishmentDay(machine,testId,day,year,month)&&day>1){
+      const prev=prevDateRef(year,month,day);
+      return window.chemicalDailyUsage(machine,testId,prev.day,prev.year,prev.month);
+    }
+    const current=chemicalGet(machine,testId,dayDate(year,month,day),false)||{};
+    if(!has(current.openingStock))return null;
+    const closing=baseClosingStock(machine,testId,day,year,month);
+    if(closing===null)return null;
+    return Math.max(0,num(current.openingStock)-closing);
+  };
+
+  window.chemicalTotalUsage=function(machine,testId,year,month){
+    const days=chemicalDaysInMonth(year,month); let total=0;
+    for(let d=1;d<=days;d++){
+      const usage=window.chemicalDailyUsage(machine,testId,d,year,month);
+      if(usage!==null)total+=usage;
+    }
+    return total;
+  };
+
+  /* Cập nhật ngay KHO/Cuối ngày/Sử dụng sau khi nhập Đầu ngày hoặc Nhận. */
+  window.refreshChemicalAutoCells=function(machine){
+    try{
+      if(!isMachine(machine))return;
+      const ym=chemicalYM(machine),days=chemicalDaysInMonth(ym.year,ym.month);
+      const table=document.querySelector('#view-chemical-'+machine+' .chem-machine-horizontal-table');
+      if(!table)return;
+      const rows=table.querySelectorAll('tbody > tr'),tests=chemicalCatalogTests(machine);
+      rows.forEach((tr,index)=>{
+        const day=index+1;if(day>days)return;
+        tests.forEach((t,ti)=>{
+          const cell=tr.children[ti+1];if(!cell)return;
+          const closing=window.chemicalAutoClosingStock(machine,t.name,day,ym.year,ym.month);
+          const usage=window.chemicalDailyUsage(machine,t.name,day,ym.year,ym.month);
+          const stock=window.chemicalStock(machine,t.name,day,ym.year,ym.month);
+          const stockEl=cell.querySelector('.chem-exact-item:first-child .chem-exact-value');
+          const closingEl=cell.querySelector('[data-chem-auto-closing]');
+          const usageEl=cell.querySelector('[data-chem-auto-usage]');
+          if(stockEl)stockEl.textContent=String(stock);
+          if(closingEl){closingEl.textContent=closing===null?'—':String(closing);closingEl.classList.toggle('pending',closing===null);}
+          if(usageEl){usageEl.textContent=usage===null?'—':String(usage);usageEl.classList.toggle('pending',usage===null);usageEl.classList.toggle('chem-negative',usage!==null&&usage<0);}
+        });
+      });
+      tests.forEach((t,ti)=>{
+        const total=window.chemicalTotalUsage(machine,t.name,ym.year,ym.month);
+        const head=table.querySelector('thead tr')?.children[ti+1];
+        const totalEl=head?.querySelector('.chem-total-used-box strong');
+        if(totalEl)totalEl.textContent=String(total);
+      });
+    }catch(e){console.warn('SMART QC chemical replenishment refresh:',e);}
+  };
+
+  /* Khi người dùng nhập Đầu ngày/Nhận, lưu như cũ rồi cập nhật tự động. */
+  const currentSet=window.chemicalSet;
+  if(typeof currentSet==='function'){
+    window.chemicalSet=function(machine,testId,date,key,value,sourceEl){
+      currentSet(machine,testId,date,key,value,sourceEl);
+      if(isMachine(machine))window.refreshChemicalAutoCells(machine);
+    };
+  }
+})();
+</script>
 
 <style id="smart-chemical-md-final-exact-request">
 /* FIX CUỐI THEO YÊU CẦU: chỉ còn KHO, Nhận, Đầu ngày, Cuối ngày, Sử dụng, Cảnh báo và Tổng test sử dụng. */
@@ -7043,10 +7187,10 @@ body.printing-virology-annual-td #view-virology-reports-td .vr-chart-card{break-
   const dayDate=(y,m,d)=>chemicalDate(y,m,d);
 
   /*
-   * KHO(D) = KHO(D-1) + Nhận(D-1) - Cấp từ KHO(D-1).
-   * Không còn ô "Cấp máy". Số cấp tự động được suy ra từ:
-   *   Cấp(D) = max(0, Đầu ngày(D+1) - Cuối ngày(D))
-   * khi cả Đầu ngày(D+1) và Cuối ngày(D) đã được nhập.
+   * KHO(D) = KHO(D-1) + Nhận(D-1) - phần test bổ sung từ KHO.
+   * Phần bổ sung là CHÊNH LỆCH TĂNG thực tế giữa Đầu ngày(D) và Đầu ngày(D-1),
+   * không cố định theo 100 test; người dùng có thể bổ sung 100, 200, 300 hoặc số khác.
+   * Không còn ô "Cấp máy" và không yêu cầu nhập thủ công số bổ sung.
    */
   window.chemicalMachineTransferForDay=function(machine,testId,day,year,month){
     const days=chemicalDaysInMonth(year,month);
@@ -7923,5 +8067,322 @@ body.printing-virology-annual-td #view-virology-reports-td .vr-chart-card{break-
     if(typeof currentView!=='undefined' && currentView==='virology-tc') renderVirologyTC();
     if(typeof currentView!=='undefined' && currentView==='virology-td') renderVirologyTD();
   }catch(e){ console.warn('SMART QC requested virology patch init:',e); }
+})();
+</script>
+
+
+
+<style id="smart-chemical-md-opening-receive-only">
+/* Chỉ thay đổi công thức tính của iFlash 9000 và DxI 800 theo yêu cầu mới. */
+.chem-auto-value{height:30px;display:flex;align-items:center;justify-content:center;border:1px solid #cbd8e2;border-radius:8px;background:#f4f7fa;font-size:13px;font-weight:800;color:#173c55;font-variant-numeric:tabular-nums}
+.chem-auto-value.pending{color:#8a9aa7;font-weight:700}
+</style>
+<script id="smart-chemical-md-opening-receive-only">
+(function(){
+  if(typeof chemicalEnsureState!=='function'||typeof chemicalGet!=='function')return;
+  const num=v=>typeof chemicalNum==='function'?chemicalNum(v):(Number.isFinite(Number(v))?Math.max(0,Number(v)):0);
+  const has=v=>typeof chemicalHasValue==='function'?chemicalHasValue(v):(v!==''&&v!==null&&v!==undefined&&String(v).trim()!=='');
+  const dayDate=(y,m,d)=>chemicalDate(y,m,d);
+
+  /*
+   * iFlash 9000 / DxI 800:
+   * - Người dùng chỉ nhập Đầu ngày và Nhận.
+   * - Cuối ngày của ngày D = Đầu ngày D+1 (lấy đúng số liệu Đầu ngày của ngày kế tiếp).
+   * - Sử dụng ngày D = Đầu ngày D - Cuối ngày D.
+   * - Khi nhập Đầu ngày của ngày kế tiếp, Cuối ngày của ngày trước
+   *   tự động cập nhật ngay trên màn hình.
+   * - Công thức KHO hiện tại và ô Nhận được giữ nguyên.
+   */
+  function nextDateRef(year,month,day){
+    const days=chemicalDaysInMonth(year,month);
+    if(day<days)return {year,month,day:day+1};
+    if(Number(month)===12)return {year:Number(year)+1,month:1,day:1};
+    return {year:Number(year),month:Number(month)+1,day:1};
+  }
+
+  window.chemicalAutoClosingStock=function(machine,testId,day,year,month){
+    const next=nextDateRef(year,month,day);
+    const nextRow=chemicalGet(machine,testId,dayDate(next.year,next.month,next.day),false)||{};
+    /* Cuối ngày hôm trước lấy trực tiếp số liệu Đầu ngày hôm sau. */
+    if(!has(nextRow.openingStock))return null;
+    return num(nextRow.openingStock);
+  };
+
+  window.chemicalDailyUsage=function(machine,testId,day,year,month){
+    /* Sử dụng = Đầu ngày hôm nay - Cuối ngày hôm nay. */
+    const current=chemicalGet(machine,testId,dayDate(year,month,day),false)||{};
+    const closing=window.chemicalAutoClosingStock(machine,testId,day,year,month);
+    if(!has(current.openingStock)||closing===null)return null;
+    return Math.max(0,num(current.openingStock)-closing);
+  };
+
+  window.chemicalTotalUsage=function(machine,testId,year,month){
+    const days=chemicalDaysInMonth(year,month); let total=0;
+    for(let d=1;d<=days;d++){
+      const usage=window.chemicalDailyUsage(machine,testId,d,year,month);
+      if(usage!==null)total+=usage;
+    }
+    return total;
+  };
+
+  function input(machine,testId,date,key,value){
+    const shown=has(value)?String(value):'';
+    const escMachine=String(machine).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    const escTest=String(testId).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    return '<input class="chem-input chem-zero-input" type="number" step="any" min="0" value="'+escapeHtml(shown)+'" placeholder="0" onchange="chemicalSet(\''+escMachine+'\',\''+escTest+'\',\''+date+'\',\''+key+'\',this.value,this)">';
+  }
+  function autoValue(v){
+    return v===null?'<b class="chem-auto-value pending" data-chem-auto="1">—</b>':'<b class="chem-auto-value" data-chem-auto="1">'+v+'</b>';
+  }
+
+  function refreshAutoCells(machine){
+    try{
+      const ym=chemicalYM(machine),days=chemicalDaysInMonth(ym.year,ym.month);
+      const table=document.querySelector('#view-chemical-'+machine+' .chem-machine-horizontal-table');
+      if(!table)return;
+      const bodyRows=table.querySelectorAll('tbody > tr');
+      const tests=chemicalCatalogTests(machine);
+      bodyRows.forEach((tr,index)=>{
+        const day=index+1;
+        if(day>days)return;
+        tests.forEach((t,ti)=>{
+          const cell=tr.children[ti+1];
+          if(!cell)return;
+          const closing=window.chemicalAutoClosingStock(machine,t.name,day,ym.year,ym.month);
+          const usage=window.chemicalDailyUsage(machine,t.name,day,ym.year,ym.month);
+          const closingEl=cell.querySelector('[data-chem-auto-closing]');
+          const usageEl=cell.querySelector('[data-chem-auto-usage]');
+          if(closingEl){closingEl.textContent=closing===null?'—':String(closing);closingEl.classList.toggle('pending',closing===null);}
+          if(usageEl){usageEl.textContent=usage===null?'—':String(usage);usageEl.classList.toggle('pending',usage===null);usageEl.classList.toggle('chem-negative',usage!==null&&usage<0);}
+        });
+      });
+      tests.forEach((t,ti)=>{
+        const total=window.chemicalTotalUsage(machine,t.name,ym.year,ym.month);
+        const head=table.querySelector('thead tr')?.children[ti+1];
+        const totalEl=head?.querySelector('.chem-total-used-box strong');
+        if(totalEl)totalEl.textContent=String(total);
+      });
+    }catch(e){console.warn('SMART QC chemical formula refresh:',e);}
+  }
+  window.refreshChemicalAutoCells=refreshAutoCells;
+
+  /* Giữ nguyên chemicalSet gốc, chỉ bổ sung cập nhật ô tự động cho iFlash/DxI. */
+  const originalChemicalSet=window.chemicalSet;
+  if(typeof originalChemicalSet==='function'){
+    window.chemicalSet=function(machine,testId,date,key,value,sourceEl){
+      originalChemicalSet(machine,testId,date,key,value,sourceEl);
+      if(machine==='iflash'||machine==='dxi')refreshAutoCells(machine);
+    };
+  }
+
+  window.renderChemicalMachine=function(machine){
+    const el=document.getElementById('view-chemical-'+machine);if(!el)return;
+    chemicalEnsureState();
+    const tests=chemicalCatalogTests(machine);
+    const machineName=machine==='iflash'?'YHLO iFlash 9000 CLIA':'Beckman Coulter UniCel DxI 800';
+    const ym=chemicalYM(machine),days=chemicalDaysInMonth(ym.year,ym.month);
+    let heads='',rows='';
+
+    tests.forEach((t,i)=>{
+      const total=window.chemicalTotalUsage(machine,t.name,ym.year,ym.month);
+      heads+='<th class="chem-test-horizontal-head chem-exact-head chem-test-col-'+(i%6)+'">'
+        +'<div class="chem-test-horizontal-title"><b>'+escapeHtml(t.name)+'</b>'+(t.unit?'<small>'+escapeHtml(t.unit)+'</small>':'')+'</div>'
+        +'<div class="chem-test-head-note">KHO · Nhận · Đầu ngày · Cuối ngày · Sử dụng · Cảnh báo</div>'
+        +'<div class="chem-total-used-box"><span>Tổng test sử dụng</span><strong>'+total+'</strong><em>test / tháng</em></div>'
+        +'</th>';
+    });
+
+    for(let d=1;d<=days;d++){
+      const date=dayDate(ym.year,ym.month,d);
+      rows+='<tr><td class="chem-date chem-day-horizontal"><b>'+d+'</b><small>'+pad(ym.month)+'/'+ym.year+'</small></td>';
+      tests.forEach((t,i)=>{
+        const r=chemicalGet(machine,t.name,date,false)||{};
+        const stock=window.chemicalStock(machine,t.name,d,ym.year,ym.month);
+        const usage=window.chemicalDailyUsage(machine,t.name,d,ym.year,ym.month);
+        const closing=window.chemicalAutoClosingStock(machine,t.name,d,ym.year,ym.month);
+        const hasActivity=has(r.receive)||has(r.openingStock)||closing!==null;
+        const warn=chemicalWarning(stock,20,50);
+        const usageText=usage===null?'—':String(usage);
+        const usageCls=usage!==null&&usage<0?' chem-negative':'';
+        const testEsc=String(t.name).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+        rows+='<td class="chem-test-horizontal-cell chem-test-col-'+(i%6)+'">'
+          +'<div class="chem-exact-grid chem-value-focus">'
+          +'<div class="chem-exact-item"><span>KHO</span><b class="chem-exact-value">'+stock+'</b></div>'
+          +'<div class="chem-exact-item"><span>Nhận</span>'+input(machine,testEsc,date,'receive',r.receive)+'</div>'
+          +'<div class="chem-exact-item"><span>Đầu ngày</span>'+input(machine,testEsc,date,'openingStock',r.openingStock)+'</div>'
+          +'<div class="chem-exact-item"><span>Cuối ngày</span><b class="chem-auto-value'+(closing===null?' pending':'')+(closing!==null&&closing<0?' chem-negative':'')+'" data-chem-auto="1" data-chem-auto-closing="1">'+(closing===null?'—':String(closing))+'</b></div>'
+          +'<div class="chem-exact-item"><span>Sử dụng</span><b class="chem-auto-value'+usageCls+(usage===null?' pending':'')+'" data-chem-auto="1" data-chem-auto-usage="1">'+usageText+'</b></div>'
+          +'<div class="chem-exact-item"><span>Cảnh báo</span><em class="chem-warning chem-exact-warning '+(hasActivity?warn.cls:'zero')+'">'+(hasActivity?warn.label:'0')+'</em></div>'
+          +'</div></td>';
+      });
+      rows+='</tr>';
+    }
+
+    let meta='';
+    if(typeof chemicalGetMonthlyMetaForTest==='function'){
+      let cards='';
+      tests.forEach(t=>{
+        const m=chemicalGetMonthlyMetaForTest(machine,t.name,ym.year,ym.month);
+        const safeTest=String(t.name).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+        cards += '<div class="chem-test-meta-card">'
+          + '<div class="chem-test-meta-title"><b>'+escapeHtml(t.name)+'</b>'+(t.unit?'<small>'+escapeHtml(t.unit)+'</small>':'')+'</div>'
+          + '<label>LOT<input class="chem-input chem-meta-input" value="'+escapeHtml(m.lot||'')+'" placeholder="Thêm LOT" onchange="chemicalSetMonthlyMetaForTest(\''+machine+'\',\''+safeTest+'\','+ym.year+','+ym.month+',\'lot\',this.value)"></label>'
+          + '<button class="chem-mini-btn" type="button" onclick="chemicalAddMonthlyLotForTest(\''+machine+'\',\''+safeTest+'\','+ym.year+','+ym.month+')">+ Thêm LOT mới</button>'
+          + '<label>DATE<input class="chem-input chem-meta-input" type="date" value="'+escapeHtml(m.lotDate||'')+'" onchange="chemicalSetMonthlyMetaForTest(\''+machine+'\',\''+safeTest+'\','+ym.year+','+ym.month+',\'lotDate\',this.value)"></label>'
+          + '<button class="chem-mini-btn" type="button" onclick="chemicalAddMonthlyDateForTest(\''+machine+'\',\''+safeTest+'\','+ym.year+','+ym.month+')">+ Thêm DATE mới</button>'
+          + '<label>Nhà sản xuất<input class="chem-input chem-meta-input" value="'+escapeHtml(m.manufacturer||'YHLO')+'" onchange="chemicalSetMonthlyMetaForTest(\''+machine+'\',\''+safeTest+'\','+ym.year+','+ym.month+',\'manufacturer\',this.value)"></label>'
+          + '<label>Người báo cáo<select class="chem-input chem-meta-input" onchange="chemicalSetMonthlyMetaForTest(\''+machine+'\',\''+safeTest+'\','+ym.year+','+ym.month+',\'reportBy\',this.value)">'+chemicalUsersOptions(m.reportBy||'')+'</select></label>'
+          + ((m.lotHistory&&m.lotHistory.length)?'<div class="chem-test-meta-history">'+chemicalLotHistoryText(m)+'</div>':'')
+          + '</div>';
+      });
+      meta='<div class="card chem-month-meta chem-test-meta-monthly"><div class="card-head"><div><h3>LOT / DATE / Nhà sản xuất / Người báo cáo — theo từng xét nghiệm</h3><span class="hint">Đặt ở cuối tháng; mỗi xét nghiệm có một bộ thông tin riêng, dùng chung cho toàn bộ tháng '+pad(ym.month)+'/'+ym.year+'</span></div><span class="tag">'+pad(ym.month)+'/'+ym.year+'</span></div><div class="card-body"><div class="chem-test-meta-grid">'+cards+'</div></div></div>';
+    }
+
+    let aux='';
+    if(machine==='iflash'){
+      const ad=ym.year+'-'+pad(ym.month)+'-01',ar=chemicalGet('iflash_aux','shared',ad,false)||{};
+      aux='<div class="card chem-table-card"><div class="card-head"><div><h3>Hóa chất phụ — dùng chung cho iFlash 9000</h3><span class="hint">Tính theo tháng/năm, không tính riêng từng ngày.</span></div><span class="tag">'+pad(ym.month)+'/'+ym.year+'</span></div><div class="chem-table-wrap"><table class="chem-table chem-aux-table"><thead><tr><th>Tháng/Năm</th><th>Triger<br>(Thùng)</th><th>Pre-Triger<br>(Thùng)</th><th>WF 10X<br>(Thùng)</th><th>WF 1X<br>(Thùng)</th><th>RVS<br>(Cái)</th></tr></thead><tbody><tr><td class="chem-date">'+pad(ym.month)+'/'+ym.year+'</td><td>'+chemicalAuxInput(ad,'auxTrigger',ar.aux?.trigger||'')+'</td><td>'+chemicalAuxInput(ad,'auxPreTrigger',ar.aux?.preTrigger||'')+'</td><td>'+chemicalAuxInput(ad,'auxWf10x',ar.aux?.wf10x||'')+'</td><td>'+chemicalAuxInput(ad,'auxWf1x',ar.aux?.wf1x||'')+'</td><td>'+chemicalAuxInput(ad,'auxRvs',ar.aux?.rvs||'')+'</td></tr></tbody></table></div></div>';
+    }
+
+    el.innerHTML='<div class="card"><div class="card-head"><div><h3>'+machineName+'</h3><span class="hint">Chọn tháng và năm độc lập; ngày tự động theo tháng đã chọn.</span></div><span class="tag">'+tests.length+' xét nghiệm</span></div><div class="card-body">'+chemicalYearMonthControls(machine)+'<div class="chem-legend"><span class="pill pass"><span class="dot"></span> OK</span><span class="pill warning"><span class="dot"></span> Sắp hết</span><span class="pill danger"><span class="dot"></span> Nguy hiểm</span></div></div></div>'
+      +'<div class="card chem-table-card"><div class="card-head"><div><h3>Sổ theo dõi hóa chất — '+machineName+'</h3><span class="hint">Chỉ nhập Đầu ngày và Nhận. Cuối ngày = Đầu ngày ngày kế tiếp; Sử dụng = Đầu ngày − Cuối ngày.</span></div></div><div class="chem-table-wrap chem-horizontal-wrap"><table class="chem-table chem-machine-horizontal-table"><thead><tr><th class="chem-day-head">Ngày</th>'+heads+'</tr></thead><tbody>'+rows+'</tbody></table></div></div>'
+      +meta+aux;
+  };
+
+  try{
+    const active=document.querySelector('.view.active[id^="view-chemical-"]');
+    if(active){const id=active.id.replace('view-chemical-','');if(id==='iflash'||id==='dxi')window.renderChemicalMachine(id);}
+  }catch(e){console.error('SMART QC chemical formula patch:',e);}
+})();
+</script>
+
+<!-- SMART QC: fix usage when next-day opening includes a replenishment from KHO -->
+<style id="smart-chemical-usage-replenishment-fix">
+.chem-auto-value{font-variant-numeric:tabular-nums}
+</style>
+<script id="smart-chemical-usage-replenishment-fix">
+(function(){
+  if(typeof chemicalEnsureState!=='function'||typeof chemicalGet!=='function')return;
+  const num=v=>typeof chemicalNum==='function'?chemicalNum(v):(Number.isFinite(Number(v))?Math.max(0,Number(v)):0);
+  const has=v=>typeof chemicalHasValue==='function'?chemicalHasValue(v):(v!==''&&v!==null&&v!==undefined&&String(v).trim()!=='');
+  const date=(y,m,d)=>chemicalDate(y,m,d);
+  const isTarget=m=>m==='iflash'||m==='dxi';
+
+  function nextRef(y,m,d){
+    const days=chemicalDaysInMonth(y,m);
+    if(d<days)return {year:Number(y),month:Number(m),day:d+1};
+    if(Number(m)===12)return {year:Number(y)+1,month:1,day:1};
+    return {year:Number(y),month:Number(m)+1,day:1};
+  }
+
+  /*
+   * Quy tắc bổ sung test từ KHO:
+   * - Chỉ cần nhập Đầu ngày.
+   * - Nếu Đầu ngày hôm sau lớn hơn Đầu ngày hôm trước, phần tăng được hiểu là
+   *   test lấy từ KHO theo từng gói 100 test.
+   * - Ví dụ 10 -> 105: chênh lệch thực tế là 95, hệ thống nhận biết 100 test
+   *   được bổ sung và 5 test đã sử dụng, nên Cuối ngày hôm trước = 5.
+   */
+  function inferredTransfer(machine,testId,day,year,month){
+    if(!isTarget(machine))return 0;
+    const next=nextRef(year,month,day);
+    const cur=chemicalGet(machine,testId,date(year,month,day),false)||{};
+    const nr=chemicalGet(machine,testId,date(next.year,next.month,next.day),false)||{};
+    if(!has(cur.openingStock)||!has(nr.openingStock))return 0;
+    const increase=num(nr.openingStock)-num(cur.openingStock);
+    if(increase<=0)return 0;
+    return Math.ceil(increase/100)*100;
+  }
+
+  /* KHO = tổng Nhận đã nhập - tổng số test đã bổ sung từ KHO. */
+  window.chemicalStock=function(machine,testId,day,year,month){
+    if(!isTarget(machine))return 0;
+    let stock=0,touched=false;
+    for(let d=1;d<=day;d++){
+      const r=chemicalGet(machine,testId,date(year,month,d),false)||{};
+      const receive=has(r.receive)?num(r.receive):0;
+      const replenishment=inferredTransfer(machine,testId,d,year,month);
+      if(has(r.receive)||replenishment>0)touched=true;
+      stock=Math.max(0,stock+receive-replenishment);
+    }
+    return touched?stock:0;
+  };
+
+  /* Cuối ngày D = số test còn lại sau khi tách phần bổ sung ở Đầu ngày D+1. */
+  window.chemicalAutoClosingStock=function(machine,testId,day,year,month){
+    if(!isTarget(machine))return null;
+    const next=nextRef(year,month,day);
+    const cur=chemicalGet(machine,testId,date(year,month,day),false)||{};
+    const nr=chemicalGet(machine,testId,date(next.year,next.month,next.day),false)||{};
+    if(!has(cur.openingStock)||!has(nr.openingStock))return null;
+    const replenishment=inferredTransfer(machine,testId,day,year,month);
+    return Math.max(0,num(nr.openingStock)-replenishment);
+  };
+
+  /* Sử dụng ngày D = Đầu ngày D - Cuối ngày D; luôn không âm. */
+  window.chemicalDailyUsage=function(machine,testId,day,year,month){
+    if(!isTarget(machine))return null;
+    const cur=chemicalGet(machine,testId,date(year,month,day),false)||{};
+    const closing=window.chemicalAutoClosingStock(machine,testId,day,year,month);
+    if(!has(cur.openingStock)||closing===null)return null;
+    return Math.max(0,num(cur.openingStock)-closing);
+  };
+
+  window.chemicalTotalUsage=function(machine,testId,year,month){
+    if(!isTarget(machine))return null;
+    const days=chemicalDaysInMonth(year,month);
+    let total=0;
+    for(let d=1;d<=days;d++){
+      const usage=window.chemicalDailyUsage(machine,testId,d,year,month);
+      if(usage!==null)total+=usage;
+    }
+    return total;
+  };
+
+  window.refreshChemicalAutoCells=function(machine){
+    try{
+      if(!isTarget(machine))return;
+      const ym=chemicalYM(machine),days=chemicalDaysInMonth(ym.year,ym.month);
+      const table=document.querySelector('#view-chemical-'+machine+' .chem-machine-horizontal-table');
+      if(!table)return;
+      const rows=table.querySelectorAll('tbody > tr'),tests=chemicalCatalogTests(machine);
+      rows.forEach((tr,index)=>{
+        const day=index+1;if(day>days)return;
+        tests.forEach((t,ti)=>{
+          const cell=tr.children[ti+1];if(!cell)return;
+          const stock=window.chemicalStock(machine,t.name,day,ym.year,ym.month);
+          const closing=window.chemicalAutoClosingStock(machine,t.name,day,ym.year,ym.month);
+          const usage=window.chemicalDailyUsage(machine,t.name,day,ym.year,ym.month);
+          const stockEl=cell.querySelector('.chem-exact-item:first-child .chem-exact-value');
+          const closingEl=cell.querySelector('[data-chem-auto-closing]');
+          const usageEl=cell.querySelector('[data-chem-auto-usage]');
+          if(stockEl)stockEl.textContent=String(stock);
+          if(closingEl){closingEl.textContent=closing===null?'—':String(closing);closingEl.classList.toggle('pending',closing===null);}
+          if(usageEl){usageEl.textContent=usage===null?'—':String(usage);usageEl.classList.toggle('pending',usage===null);usageEl.classList.remove('chem-negative');}
+        });
+      });
+      tests.forEach((t,ti)=>{
+        const total=window.chemicalTotalUsage(machine,t.name,ym.year,ym.month);
+        const head=table.querySelector('thead tr')?.children[ti+1];
+        const totalEl=head?.querySelector('.chem-total-used-box strong');
+        if(totalEl)totalEl.textContent=String(total===null?0:total);
+      });
+    }catch(e){console.warn('SMART QC usage/replenishment final fix:',e);}
+  };
+
+  const prevSet=window.chemicalSet;
+  if(typeof prevSet==='function'){
+    window.chemicalSet=function(machine,testId,dateValue,key,value,sourceEl){
+      prevSet(machine,testId,dateValue,key,value,sourceEl);
+      if(isTarget(machine))window.refreshChemicalAutoCells(machine);
+    };
+  }
+
+  try{
+    ['iflash','dxi'].forEach(m=>{
+      const active=document.querySelector('.view.active#view-chemical-'+m);
+      if(active)window.refreshChemicalAutoCells(m);
+    });
+  }catch(e){}
 })();
 </script>
