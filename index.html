@@ -1548,6 +1548,9 @@ const NAV=[
     {id:'chemical-md', label:'Quản lý Hóa chất MD', icon:iconFlask(), children:[
       {id:'chemical-iflash', label:'iFlash 9000', icon:iconFlask()},
       {id:'chemical-allergen', label:'108 dị nguyên', icon:iconPackage()},
+      {id:'chemical-allergen53', label:'53 dị nguyên', icon:iconPackage()},
+      {id:'chemical-helminth', label:'Giun sán', icon:iconPackage()},
+      {id:'chemical-rapidwater', label:'Test nhanh & Test nước', icon:iconTestTubeCheck()},
       {id:'chemical-dxi', label:'DxI 800', icon:iconAnalyzer()}
     ]},
     {id:'chemical-vs', label:'Quản lý Hóa chất VS', icon:iconFlask()},
@@ -1640,6 +1643,9 @@ const VIEW_META={
   'chemical-md':['Quản lý Hóa chất MD','Quản lý hóa chất theo từng máy — iFlash 9000, 108 dị nguyên và DxI 800'],
   'chemical-iflash':['Quản lý Hóa chất MD — iFlash 9000','Theo dõi Kho, Nhận, Đầu ngày, Cuối ngày, Cảnh báo, LOT và DATE theo ngày'],
   'chemical-allergen':['Quản lý Hóa chất MD — 108 dị nguyên','Theo dõi Kho, Nhận, Thực hiện, Cảnh báo, Anti CCD và Ghi chú theo ngày'],
+  'chemical-allergen53':['Quản lý Hóa chất MD — 53 dị nguyên','Theo dõi Kho, Nhận, Thực hiện, Cảnh báo theo ngày — áp dụng cùng công thức 108 dị nguyên'],
+  'chemical-helminth':['Quản lý Hóa chất MD — Giun sán','Theo dõi Kho, Nhận, Đầu ngày, Cuối ngày, Sử dụng, Cảnh báo và Tổng test sử dụng'],
+  'chemical-rapidwater':['Quản lý Hóa chất MD — Test nhanh & Test nước','Theo dõi Kho, Nhận, Đầu ngày, Cuối ngày, Sử dụng, Cảnh báo và Tổng test sử dụng'],
   'chemical-dxi':['Quản lý Hóa chất MD — DxI 800','Theo dõi Kho, Nhận, Đầu ngày, Cuối ngày, Cảnh báo, LOT và DATE theo ngày'],
   lots:['Lot QC Máy miễn dịch tự động','Quản lý lô QC - theo Level 1 & Level 2'],
   'rapidwater-lots':['Lot QC Test nhanh & Test nước','Quản lý Lot - theo chứng Âm và chứng Dương'],
@@ -6389,7 +6395,7 @@ function chemicalInput(machine,testId,date,key,value,type='text',extra=''){
 }
 function chemicalSet(machine,testId,date,key,value,sourceEl){
   const r=chemicalGet(machine,testId,date,true);r[key]=value;
-  if((machine==='allergen'||machine==='allergen_shared')&&key==='execute'){
+  if((machine==='allergen'||machine==='allergen_shared'||machine==='allergen53')&&key==='execute'){
     r.antiCcd=chemicalNum(value)>0?'Có Anti CCD':'';
     if(chemicalNum(value)>0&&!r.note)r.note='1';
     if(chemicalNum(value)<=0)r.note='';
@@ -10836,3 +10842,260 @@ const navStyle=document.createElement('style');navStyle.textContent='.nav-item.a
   body.smart-exact-print .cls-export-v3 .cls-data-v3 tr{break-inside:avoid !important;page-break-inside:avoid !important;}
 }
 </style>
+
+<!-- SMART QC — BỔ SUNG 3 MODULE QUẢN LÝ HÓA CHẤT MD THEO YÊU CẦU -->
+<style id="smart-chemical-md-added-modules-style">
+  .chem-added-hub-note{font-size:11.5px;color:var(--text-muted);margin-top:4px}
+  .chem-added-table-wrap{overflow:auto;border:1px solid var(--border);border-radius:10px}
+  .chem-added-machine-table{width:max-content;min-width:100%;border-collapse:collapse}
+  .chem-added-machine-table th,.chem-added-machine-table td{border-bottom:1px solid var(--border);border-right:1px solid var(--border);vertical-align:top;padding:7px}
+  .chem-added-machine-table th:last-child,.chem-added-machine-table td:last-child{border-right:0}
+  .chem-added-machine-table thead th{background:var(--surface-2);position:sticky;top:0;z-index:3;text-align:center}
+  .chem-added-day{min-width:70px;width:70px;text-align:center;position:sticky;left:0;z-index:4;background:var(--surface)!important}
+  .chem-added-test-head{min-width:250px;width:250px;text-align:center}
+  .chem-added-test-head b{display:block;font-size:12px;color:#0f3d5e}
+  .chem-added-test-head small{display:block;color:var(--text-muted);font-weight:500;margin-top:2px}
+  .chem-added-total{margin-top:6px;border:1px solid #a9cbe5;background:#eef7ff;border-radius:7px;padding:5px 7px}
+  .chem-added-total span{display:block;font-size:9px;color:#36566b;font-weight:800}
+  .chem-added-total strong{font-size:16px;color:#063b63}
+  .chem-added-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+  .chem-added-item{border:1px solid #d7e2ec;background:#fff;border-radius:7px;padding:4px}
+  .chem-added-item>span{display:block;font-size:9px;color:#36566b;font-weight:800;margin-bottom:2px}
+  .chem-added-item .chem-input{height:28px;padding:4px 6px;font-size:12px;font-weight:700}
+  .chem-added-auto{height:28px;display:flex;align-items:center;justify-content:center;border:1px solid #a9cbe5;border-radius:7px;background:#eef7ff;color:#063b63;font-size:12px;font-weight:800}
+  .chem-added-warning{height:28px;display:flex;align-items:center;justify-content:center;border-radius:7px;font-size:11px;font-weight:800}
+  .chem-added-warning.pass{background:var(--success-bg);color:var(--success)}
+  .chem-added-warning.warning{background:var(--warning-bg);color:var(--warning)}
+  .chem-added-warning.danger{background:var(--danger-bg);color:var(--danger)}
+  .chem-added-warning.zero{background:var(--neutral-bg);color:var(--neutral)}
+  .chem-added-shared-table{width:100%;table-layout:fixed}
+  .chem-added-shared-table th,.chem-added-shared-table td{text-align:center;vertical-align:middle}
+  .chem-added-shared-table th:nth-child(1){width:80px}.chem-added-shared-table th:nth-child(2){width:150px}.chem-added-shared-table th:nth-child(3){width:150px}.chem-added-shared-table th:nth-child(4){width:170px}.chem-added-shared-table th:nth-child(5){width:150px}.chem-added-shared-table th:nth-child(6){width:170px}
+  .chem-fixed-date{white-space:nowrap!important;min-width:92px!important;width:92px!important;text-align:center!important;}
+  .chem-fixed-date b{display:block;font-size:12px;white-space:nowrap;}
+  .chem-lot-cell{min-width:155px!important;text-align:center;}
+  .chem-lot-cell .chem-input{margin-bottom:4px;}
+  .chem-lot-cell .chem-mini-btn{display:block;width:100%;padding:4px 6px;border:1px solid var(--border);background:var(--surface-2);border-radius:6px;font-size:10.5px;font-weight:700;cursor:pointer;color:var(--text);}
+  .chem-lot-cell .chem-mini-btn:hover{background:var(--primary-tint);color:var(--primary-dark);}
+  .chem-lot-history-item{font-size:9.5px;color:var(--text-muted);margin-top:4px;text-align:left;line-height:1.25;}
+  .chem-added-allergen53-table{min-width:1450px;}
+  .chem-added-allergen53-table th:nth-child(1){width:92px}.chem-added-allergen53-table th:nth-child(2){width:110px}.chem-added-allergen53-table th:nth-child(3){width:120px}.chem-added-allergen53-table th:nth-child(4){width:125px}.chem-added-allergen53-table th:nth-child(5){width:125px}.chem-added-allergen53-table th:nth-child(6){width:135px}.chem-added-allergen53-table th:nth-child(7){width:180px}.chem-added-allergen53-table th:nth-child(8){width:180px}.chem-added-allergen53-table th:nth-child(9){width:180px;}
+  .chem-added-allergen53-table .chem-added-auto{min-width:0;}
+  .chem-added-count{font-weight:800;color:var(--primary)}
+  @media(max-width:900px){.chem-added-test-head{min-width:230px;width:230px}.chem-added-machine-table{font-size:12px}}
+</style>
+<script id="smart-chemical-md-added-modules">
+(function(){
+  'use strict';
+  if(typeof chemicalEnsureState!=='function'||typeof chemicalGet!=='function')return;
+
+  const HELMINTH_TESTS=[
+    {name:'Giun đũa chó',unit:''},{name:'Giun đầu gai',unit:''},{name:'Giun lươn',unit:''},
+    {name:'Sán lá gan',unit:''},{name:'Sán gạo heo',unit:''},{name:'Amibe',unit:''}
+  ];
+  const ALLERGEN53=Array.from({length:53},(_,i)=>({name:'Dị nguyên '+String(i+1).padStart(3,'0'),code:'A53-'+String(i+1).padStart(3,'0')}));
+
+  function ensureAddedState(){
+    chemicalEnsureState();
+    ['helminth','allergen53','rapidwater'].forEach(k=>{
+      if(!state.chemicalMDView[k]){const t=chemicalTodayParts();state.chemicalMDView[k]={year:t.year,month:t.month};}
+    });
+  }
+  function esc(v){return typeof escapeHtml==='function'?escapeHtml(v??''):String(v??'');}
+  function num(v){return typeof chemicalNum==='function'?chemicalNum(v):(Number.isFinite(Number(v))?Math.max(0,Number(v)):0);}
+  function has(v){return typeof chemicalHasValue==='function'?chemicalHasValue(v):(v!==''&&v!==null&&v!==undefined&&String(v).trim()!=='');}
+  function date(y,m,d){return chemicalDate(y,m,d);}
+  function nextRef(y,m,d){
+    const days=chemicalDaysInMonth(y,m);
+    if(d<days)return {year:Number(y),month:Number(m),day:d+1};
+    if(Number(m)===12)return {year:Number(y)+1,month:1,day:1};
+    return {year:Number(y),month:Number(m)+1,day:1};
+  }
+  function prevRef(y,m,d){
+    if(d>1)return {year:Number(y),month:Number(m),day:d-1};
+    if(Number(m)===1)return {year:Number(y)-1,month:12,day:31};
+    return {year:Number(y),month:Number(m)-1,day:chemicalDaysInMonth(Number(y),Number(m)-1)};
+  }
+  function addedInput(machine,testId,dt,key,value){
+    const shown=has(value)?String(value):'';
+    const em=String(machine).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    const et=String(testId).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    return '<input class="chem-input" type="number" step="any" min="0" value="'+esc(shown)+'" placeholder="0" onchange="chemicalSet(\''+em+'\',\''+et+'\',\''+dt+'\',\''+key+'\',this.value,this)">';
+  }
+  function machineOpening(machine,testId,day,y,m){
+    const r=chemicalGet(machine,testId,date(y,m,day),false)||{};
+    return has(r.openingStock)?num(r.openingStock):null;
+  }
+  function inferredReplenishment(machine,testId,day,y,m){
+    if(day<=1)return 0;
+    const cur=machineOpening(machine,testId,day,y,m),prev=machineOpening(machine,testId,day-1,y,m);
+    if(cur===null||prev===null)return 0;
+    return Math.max(0,cur-prev);
+  }
+  function machineStock(machine,testId,day,y,m){
+    let stock=0,touched=false;
+    for(let d=1;d<=day;d++){
+      const r=chemicalGet(machine,testId,date(y,m,d),false)||{};
+      const receive=has(r.receive)?num(r.receive):0;
+      const replenish=inferredReplenishment(machine,testId,d,y,m);
+      if(has(r.receive)||replenish>0)touched=true;
+      stock=Math.max(0,stock+receive-replenish);
+    }
+    return touched?stock:0;
+  }
+  function machineClosing(machine,testId,day,y,m){
+    const next=nextRef(y,m,day),nr=chemicalGet(machine,testId,date(next.year,next.month,next.day),false)||{};
+    if(!has(nr.openingStock))return null;
+    const replenishment=next.day>1
+      ? inferredReplenishment(machine,testId,next.day,next.year,next.month)
+      : Math.max(0,num(nr.openingStock)-(machineOpening(machine,testId,chemicalDaysInMonth(next.year,next.month),next.year,next.month)??0));
+    return Math.max(0,num(nr.openingStock)-replenishment);
+  }
+  function machineUsage(machine,testId,day,y,m){
+    const cur=chemicalGet(machine,testId,date(y,m,day),false)||{};
+    const closing=machineClosing(machine,testId,day,y,m);
+    if(!has(cur.openingStock)||closing===null)return null;
+    return Math.max(0,num(cur.openingStock)-closing);
+  }
+  function machineTotal(machine,testId,y,m){
+    let total=0;for(let d=1;d<=chemicalDaysInMonth(y,m);d++){const u=machineUsage(machine,testId,d,y,m);if(u!==null)total+=u;}return total;
+  }
+  function warn(stock,danger,low){if(stock<=danger)return {label:'Nguy hiểm',cls:'danger'};if(stock<=low)return {label:'Sắp hết',cls:'warning'};return {label:'OK',cls:'pass'};}
+  function ymControls(kind){
+    ensureAddedState();const t=chemicalTodayParts(),v=state.chemicalMDView[kind]||{year:t.year,month:t.month};
+    const years=Array.from({length:9},(_,i)=>t.year-4+i);
+    return '<div class="chem-controls"><label class="field"><span class="fl-label">Năm</span><select onchange="smartAddedSetYM(\''+kind+'\',this.value,this.parentElement.parentElement.querySelectorAll(\'select\')[1].value)">'+years.map(y=>'<option value="'+y+'" '+(y===v.year?'selected':'')+'>'+y+'</option>').join('')+'</select></label><label class="field"><span class="fl-label">Tháng</span><select onchange="smartAddedSetYM(\''+kind+'\',this.parentElement.parentElement.querySelectorAll(\'select\')[0].value,this.value)">'+Array.from({length:12},(_,i)=>i+1).map(m=>'<option value="'+m+'" '+(m===v.month?'selected':'')+'>Tháng '+pad(m)+'</option>').join('')+'</select></label><div class="chem-auto-note"><span class="dot"></span> Ngày 1–'+chemicalDaysInMonth(v.year,v.month)+' tự động theo tháng đã chọn</div></div>';
+  }
+  window.smartAddedSetYM=function(kind,year,month){ensureAddedState();state.chemicalMDView[kind]={year:Number(year),month:Number(month)};if(kind==='allergen53')renderChemicalAllergen53();else if(kind==='helminth')renderChemicalHelminth();else renderChemicalRapidWater();};
+
+  function renderMachineLike(kind,title,tests,description,danger,low){
+    const el=document.getElementById('view-chemical-'+kind);if(!el)return;ensureAddedState();const ym=state.chemicalMDView[kind],days=chemicalDaysInMonth(ym.year,ym.month);
+    let heads='',rows='';
+    tests.forEach((t,i)=>{
+      const total=machineTotal(kind,t.name,ym.year,ym.month);
+      heads+='<th class="chem-added-test-head"><b>'+esc(t.name)+'</b>'+(t.unit?'<small>'+esc(t.unit)+'</small>':'')+'<div class="chem-added-total"><span>Tổng test sử dụng</span><strong>'+total+'</strong><span>test / tháng</span></div></th>';
+    });
+    for(let d=1;d<=days;d++){
+      const dt=date(ym.year,ym.month,d);rows+='<tr><td class="chem-added-day chem-fixed-date"><b>'+fmtDMY(dt)+'</b></td>';
+      tests.forEach(t=>{
+        const r=chemicalGet(kind,t.name,dt,false)||{};const stock=machineStock(kind,t.name,d,ym.year,ym.month);const closing=machineClosing(kind,t.name,d,ym.year,ym.month);const usage=machineUsage(kind,t.name,d,ym.year,ym.month);const w=warn(stock,danger,low);const active=has(r.receive)||has(r.openingStock)||closing!==null;
+        rows+='<td><div class="chem-added-grid">'+
+          '<div class="chem-added-item"><span>Kho</span><b class="chem-added-auto">'+stock+'</b></div>'+
+          '<div class="chem-added-item"><span>Nhận</span>'+addedInput(kind,t.name,dt,'receive',r.receive)+'</div>'+
+          '<div class="chem-added-item"><span>Đầu ngày</span>'+addedInput(kind,t.name,dt,'openingStock',r.openingStock)+'</div>'+
+          '<div class="chem-added-item"><span>Cuối ngày</span><b class="chem-added-auto">'+(closing===null?'—':closing)+'</b></div>'+
+          '<div class="chem-added-item"><span>Sử dụng</span><b class="chem-added-auto">'+(usage===null?'—':usage)+'</b></div>'+
+          '<div class="chem-added-item"><span>Cảnh báo</span><em class="chem-added-warning '+(active?w.cls:'zero')+'">'+(active?w.label:'0')+'</em></div>'+
+          '</div></td>';
+      });rows+='</tr>';
+    }
+    el.innerHTML='<div class="card"><div class="card-head"><div><h3>'+title+'</h3><span class="hint">'+description+'</span></div><span class="tag">'+tests.length+' xét nghiệm</span></div><div class="card-body">'+ymControls(kind)+'<div class="chem-legend"><span class="pill pass"><span class="dot"></span> OK</span><span class="pill warning"><span class="dot"></span> Sắp hết</span><span class="pill danger"><span class="dot"></span> Nguy hiểm</span></div></div></div><div class="card chem-table-card"><div class="card-head"><div><h3>Sổ theo dõi hóa chất — '+title+'</h3><span class="hint">Kho, Nhận, Đầu ngày, Cuối ngày, Sử dụng và Cảnh báo được tính độc lập theo từng xét nghiệm và từng ngày. Dữ liệu được lưu vào state SMART QC.</span></div></div><div class="chem-added-table-wrap"><table class="chem-added-machine-table"><thead><tr><th class="chem-added-day">Ngày</th>'+heads+'</tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+  }
+
+  function allergen53Stock(day,y,m){let stock=0;for(let d=1;d<=day;d++){const r=chemicalGet('allergen53','shared',date(y,m,d),false)||{};stock=Math.max(0,stock+(has(r.receive)?num(r.receive):0)-(has(r.execute)?num(r.execute):0));}return stock;}
+  function chemicalAddLotAllergen53(dt){
+    const r=chemicalGet('allergen53','shared',dt,true);r.lotHistory=r.lotHistory||[];
+    if(r.lot||r.lotDate)r.lotHistory.push({lot:r.lot||'',date:r.lotDate||'',manufacturer:''});
+    r.lot='';r.lotDate='';queueSave();renderChemicalAllergen53();
+  }
+  function chemicalAddDateAllergen53(dt){chemicalAddLotAllergen53(dt);}
+  function chemicalLotHistoryText53(r){return (r.lotHistory||[]).filter(x=>x.lot||x.date).map((x,i)=>`<div class="chem-lot-history-item"><b>LOT ${i+1}:</b> ${esc(x.lot||'—')} · DATE: ${esc(x.date||'—')}</div>`).join('');}
+  window.chemicalAddLotAllergen53=chemicalAddLotAllergen53;
+  window.chemicalAddDateAllergen53=chemicalAddDateAllergen53;
+
+  function renderChemicalAllergen53(){
+    const el=document.getElementById('view-chemical-allergen53');if(!el)return;ensureAddedState();const ym=state.chemicalMDView.allergen53,days=chemicalDaysInMonth(ym.year,ym.month);let rows='';
+    for(let d=1;d<=days;d++){
+      const dt=date(ym.year,ym.month,d),r=chemicalGet('allergen53','shared',dt,false)||{},stock=allergen53Stock(d,ym.year,ym.month),w=warn(stock,10,20),active=has(r.receive)||has(r.execute),execute=num(r.execute),noteVal=execute>0?(r.note==='2'?'2':'1'):'';
+      rows+='<tr data-chem-allergen53-date="'+dt+'"><td class="chem-added-day chem-fixed-date"><b>'+fmtDMY(dt)+'</b></td><td><b class="chem-added-auto">'+stock+'</b></td><td>'+addedInput('allergen53','shared',dt,'receive',r.receive)+'</td><td>'+addedInput('allergen53','shared',dt,'execute',r.execute)+'</td><td><em class="chem-added-warning '+(active?w.cls:'zero')+'">'+(active?w.label:'0')+'</em></td><td><span class="chem-auto-text chem-added-auto" data-chem-calc="anti-ccd">'+(execute>0?'Có Anti CCD':'0')+'</span></td><td class="chem-lot-cell"><input class="chem-input" value="'+esc(r.lot||'')+'" placeholder="Thêm LOT" onchange="chemicalSet(\'allergen53\',\'shared\',\''+dt+'\',\'lot\',this.value)"><button class="chem-mini-btn" type="button" onclick="chemicalAddLotAllergen53(\''+dt+'\')">+ Thêm LOT mới</button>'+chemicalLotHistoryText53(r)+'</td><td class="chem-lot-cell"><input class="chem-input" type="date" value="'+esc(r.lotDate||'')+'" onchange="chemicalSet(\'allergen53\',\'shared\',\''+dt+'\',\'lotDate\',this.value)"><button class="chem-mini-btn" type="button" onclick="chemicalAddDateAllergen53(\''+dt+'\')">+ Thêm DATE mới</button></td><td><select class="chem-input" onchange="chemicalSet(\'allergen53\',\'shared\',\''+dt+'\',\'note\',this.value)"><option value="">—</option><option value="1" '+(noteVal==='1'?'selected':'')+'>1. Hoạt động bình thường</option><option value="2" '+(noteVal==='2'?'selected':'')+'>2. Lỗi</option></select></td></tr>';
+    }
+    el.innerHTML='<div class="card"><div class="card-head"><div><h3>53 dị nguyên</h3><span class="hint">Hóa chất dùng chung cho bộ 53 dị nguyên; áp dụng cùng nội dung, giao diện và công thức Kho = Kho trước + Nhận − Thực hiện như 108 dị nguyên.</span></div><span class="tag">53 dị nguyên</span></div><div class="card-body">'+ymControls('allergen53')+'<div class="chem-added-count">Danh mục: 53 dị nguyên · theo dõi 1 sổ dùng chung theo ngày</div></div></div><div class="card chem-table-card"><div class="card-head"><div><h3>Sổ theo dõi hóa chất dùng chung — 53 dị nguyên</h3><span class="hint">Chỉ áp dụng cho module 53 dị nguyên; không dùng chung dữ liệu với 108 dị nguyên.</span></div></div><div class="chem-table-wrap"><table class="chem-added-shared-table chem-added-allergen53-table"><thead><tr><th>Ngày</th><th>Kho</th><th>Nhận</th><th>Thực hiện</th><th>Cảnh báo</th><th>Anti CCD</th><th>LOT</th><th>DATE</th><th>Ghi chú</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+  }
+
+  function rapidWaterChemicalTests(){
+    ensureAddedState();
+    const list=Array.isArray(state.rapidWaterTests)?state.rapidWaterTests:[];
+    return list.filter(t=>t&&((t.category==='Test nhanh')||(t.category==='Test nước'))).map(t=>({name:String(t.name||'').trim(),unit:String(t.unit||'').trim(),sourceTestId:t.id,category:t.category})).filter(t=>t.name);
+  }
+  function renderChemicalRapidWater(){
+    const tests=rapidWaterChemicalTests();
+    renderMachineLike('rapidwater','Test nhanh & Test nước',tests,'Lấy trực tiếp danh mục xét nghiệm từ module Xét nghiệm. Mỗi xét nghiệm có sổ tồn riêng và công thức iFlash 9000.',20,50);
+    const el=document.getElementById('view-chemical-rapidwater');if(el){const tag=el.querySelector('.card .tag');if(tag)tag.textContent=tests.length+' xét nghiệm';}
+  }
+  function renderChemicalHelminth(){renderMachineLike('helminth','Giun sán',HELMINTH_TESTS,'Gồm Giun đũa chó, Giun đầu gai, Giun lươn, Sán lá gan, Sán gạo heo và Amibe. Áp dụng cùng công thức iFlash 9000.',20,50);}
+
+  // Đảm bảo các module mới được tạo độc lập trong DOM.
+  function ensureAddedViews(){
+    const content=document.getElementById('content');if(!content)return;
+    ['chemical-allergen53','chemical-helminth','chemical-rapidwater'].forEach(id=>{if(!document.getElementById('view-'+id)){const v=document.createElement('div');v.className='view';v.id='view-'+id;content.appendChild(v);}});
+  }
+  const originalBuild=window.buildViewShells;
+  if(typeof originalBuild==='function')window.buildViewShells=function(){originalBuild();ensureAddedViews();};
+  ensureAddedViews();
+
+  // Thêm 3 mục con vào đúng nhóm Quản lý Hóa chất MD, giữ nguyên các mục hiện có.
+  try{
+    const group=NAV.find(g=>g.items&&g.items.some(x=>x.id==='chemical-md'));
+    const parent=group&&group.items.find(x=>x.id==='chemical-md');
+    if(parent){
+      const extras=[
+        {id:'chemical-allergen53',label:'53 dị nguyên',icon:iconPackage()},
+        {id:'chemical-helminth',label:'Giun sán',icon:iconPackage()},
+        {id:'chemical-rapidwater',label:'Test nhanh & Test nước',icon:iconTestTubeCheck()}
+      ];
+      const ids=new Set((parent.children||[]).map(x=>x.id));parent.children=parent.children||[];extras.forEach(x=>{if(!ids.has(x.id))parent.children.splice(Math.max(0,parent.children.length-1),0,x);});
+    }
+  }catch(e){console.warn('SMART QC added chemical nav:',e);}
+
+  // Mở rộng điều phối view nhưng không thay đổi các view cũ.
+  const oldRenderView=window.renderView;
+  window.renderView=function(view){
+    if(view==='chemical-allergen53')renderChemicalAllergen53();
+    else if(view==='chemical-helminth')renderChemicalHelminth();
+    else if(view==='chemical-rapidwater')renderChemicalRapidWater();
+    else oldRenderView(view);
+    if(typeof formatVisibleDates==='function')formatVisibleDates(document.getElementById('view-'+view)||document.body);
+  };
+
+  // Để thao tác nhập dữ liệu của 3 module mới không render lại toàn bộ trang.
+  const oldSet=window.chemicalSet;
+  window.chemicalSet=function(machine,testId,dt,key,value,sourceEl){
+    if(machine==='helminth'||machine==='rapidwater'||machine==='allergen53'){
+      const r=chemicalGet(machine,testId,dt,true);r[key]=value;
+      queueSave();
+      if(machine==='helminth')refreshAddedMachineUI('helminth');
+      else if(machine==='rapidwater')refreshAddedMachineUI('rapidwater');
+      else refreshAddedAllergen53UI();
+      return;
+    }
+    oldSet(machine,testId,dt,key,value,sourceEl);
+  };
+  function refreshAddedMachineUI(kind){
+    const el=document.getElementById('view-chemical-'+kind);if(!el||!el.classList.contains('active'))return;
+    const ym=state.chemicalMDView[kind],days=chemicalDaysInMonth(ym.year,ym.month),tests=kind==='helminth'?HELMINTH_TESTS:rapidWaterChemicalTests(),table=el.querySelector('.chem-added-machine-table');if(!table)return;
+    const rows=table.querySelectorAll('tbody tr');rows.forEach((tr,i)=>{const d=i+1;if(d>days)return;tests.forEach((t,ti)=>{const cell=tr.children[ti+1];if(!cell)return;const stock=machineStock(kind,t.name,d,ym.year,ym.month),closing=machineClosing(kind,t.name,d,ym.year,ym.month),usage=machineUsage(kind,t.name,d,ym.year,ym.month),w=warn(stock,20,50),r=chemicalGet(kind,t.name,date(ym.year,ym.month,d),false)||{};const vals=cell.querySelectorAll('.chem-added-auto');if(vals[0])vals[0].textContent=String(stock);if(vals[1])vals[1].textContent=closing===null?'—':String(closing);if(vals[2])vals[2].textContent=usage===null?'—':String(usage);const we=cell.querySelector('.chem-added-warning');if(we){we.textContent=(has(r.receive)||has(r.openingStock)||closing!==null)?w.label:'0';we.className='chem-added-warning '+((has(r.receive)||has(r.openingStock)||closing!==null)?w.cls:'zero');}});});
+    tests.forEach((t,ti)=>{const total=machineTotal(kind,t.name,ym.year,ym.month),head=table.querySelector('thead tr').children[ti+1],strong=head&&head.querySelector('.chem-added-total strong');if(strong)strong.textContent=String(total);});
+  }
+  function refreshAddedAllergen53UI(){
+    const el=document.getElementById('view-chemical-allergen53');if(!el||!el.classList.contains('active'))return;const ym=state.chemicalMDView.allergen53,rows=el.querySelectorAll('.chem-added-shared-table tbody tr');rows.forEach((tr,i)=>{const d=i+1,r=chemicalGet('allergen53','shared',date(ym.year,ym.month,d),false)||{},stock=allergen53Stock(d,ym.year,ym.month),w=warn(stock,10,20),active=has(r.receive)||has(r.execute),execute=num(r.execute);const auto=tr.children[1]?.querySelector('.chem-added-auto');if(auto)auto.textContent=String(stock);const we=tr.children[4]?.querySelector('.chem-added-warning');if(we){we.textContent=active?w.label:'0';we.className='chem-added-warning '+(active?w.cls:'zero');}const anti=tr.children[5]?.querySelector('[data-chem-calc=\"anti-ccd\"]');if(anti)anti.textContent=execute>0?'Có Anti CCD':'0';});
+  }
+
+  // Mở rộng riêng trang hub Quản lý Hóa chất MD, giữ nguyên các thẻ cũ và bổ sung 3 module mới.
+  const originalChemicalMD=window.renderChemicalMD;
+  window.renderChemicalMD=function(){
+    const el=document.getElementById('view-chemical-md');if(!el)return;ensureAddedState();
+    const card=(id,icon,title,desc)=>'<div class="chem-hub-card" onclick="go(\''+id+'\')"><div class="chem-hub-icon">'+icon+'</div><h3>'+title+'</h3><p>'+desc+'</p></div>';
+    el.innerHTML='<div class="card"><div class="card-head"><div><h3>Quản lý Hóa chất MD</h3><span class="hint">Quản lý hóa chất theo từng máy và từng nhóm xét nghiệm; mỗi module lưu dữ liệu độc lập.</span></div></div><div class="card-body"><div class="chem-hub-grid">'+
+      card('chemical-iflash',iconFlask(),'iFlash 9000',chemicalCatalogTests('iflash').length+' xét nghiệm · Kho, Nhận, Đầu ngày, Cuối ngày, Sử dụng, Cảnh báo và Tổng test sử dụng.')+
+      card('chemical-allergen',iconPackage(),'108 dị nguyên','Hóa chất dùng chung cho 108 dị nguyên · Kho, Nhận, Thực hiện, Cảnh báo và Anti CCD.')+
+      card('chemical-allergen53',iconPackage(),'53 dị nguyên','Hóa chất dùng chung cho 53 dị nguyên · áp dụng độc lập cùng công thức 108 dị nguyên.')+
+      card('chemical-helminth',iconPackage(),'Giun sán','6 xét nghiệm · áp dụng độc lập cùng công thức iFlash 9000.')+
+      card('chemical-rapidwater',iconTestTubeCheck(),'Test nhanh & Test nước',rapidWaterChemicalTests().length+' xét nghiệm · lấy trực tiếp từ module Xét nghiệm và áp dụng công thức iFlash 9000.')+
+      card('chemical-dxi',iconAnalyzer(),'DxI 800',chemicalCatalogTests('dxi').length+' xét nghiệm · sổ theo dõi riêng.')+
+      '</div></div></div>';
+  };
+
+  // Đồng bộ trạng thái ban đầu ngay khi script chạy.
+  ensureAddedState();
+})();
+</script>
