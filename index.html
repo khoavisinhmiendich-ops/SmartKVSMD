@@ -2035,10 +2035,10 @@ function renderRapidWaterEntry(){
               <tbody>
                 <tr>
                   <td><input type="date" id="rw_date" value="${escapeHtml(editingRecord?.date||todayISO())}" required></td>
-                  <td><select id="rw_r1_neg"><option value="">—</option><option ${editingRecord?.run1Neg==='Âm'?'selected':''}>Âm</option><option ${editingRecord?.run1Neg==='Dương'?'selected':''}>Dương</option></select></td>
-                  <td><select id="rw_r1_pos"><option value="">—</option><option ${editingRecord?.run1Pos==='Âm'?'selected':''}>Âm</option><option ${editingRecord?.run1Pos==='Dương'?'selected':''}>Dương</option></select></td>
-                  <td><select id="rw_r2_neg"><option value="">—</option><option ${editingRecord?.run2Neg==='Âm'?'selected':''}>Âm</option><option ${editingRecord?.run2Neg==='Dương'?'selected':''}>Dương</option></select></td>
-                  <td><select id="rw_r2_pos"><option value="">—</option><option ${editingRecord?.run2Pos==='Âm'?'selected':''}>Âm</option><option ${editingRecord?.run2Pos==='Dương'?'selected':''}>Dương</option></select></td>
+                  <td><select id="rw_r1_neg"><option value="">—</option><option ${editingRecord?.run1Neg==='Âm tính'?'selected':''}>Âm tính</option><option ${editingRecord?.run1Neg==='Dương tính'?'selected':''}>Dương tính</option></select></td>
+                  <td><select id="rw_r1_pos"><option value="">—</option><option ${editingRecord?.run1Pos==='Âm tính'?'selected':''}>Âm tính</option><option ${editingRecord?.run1Pos==='Dương tính'?'selected':''}>Dương tính</option></select></td>
+                  <td><select id="rw_r2_neg"><option value="">—</option><option ${editingRecord?.run2Neg==='Âm tính'?'selected':''}>Âm tính</option><option ${editingRecord?.run2Neg==='Dương tính'?'selected':''}>Dương tính</option></select></td>
+                  <td><select id="rw_r2_pos"><option value="">—</option><option ${editingRecord?.run2Pos==='Âm tính'?'selected':''}>Âm tính</option><option ${editingRecord?.run2Pos==='Dương tính'?'selected':''}>Dương tính</option></select></td>
                   <td><input id="rw_note" placeholder="Ghi chú" value="${escapeHtml(editingRecord?.note||'')}"></td>
                 </tr>
               </tbody>
